@@ -461,7 +461,8 @@ def build_segment(
     title_filter = (
         f"drawtext={font_opt}text='{txt}'"
         ":fontsize=44:fontcolor=white"
-        ":box=1:boxcolor=0x1a6fc4@0.86:boxborderw=20"
+        ":bordercolor=red:borderw=2"
+        ":box=1:boxcolor=0x000000@0.65:boxborderw=18"
         ":x='if(lt(t,0.5),-tw+(tw+80)*t/0.5,60)'"
         ":y=h-120"
         ":alpha='if(lt(t,4.5),1,if(lt(t,5.0),1-(t-4.5)/0.5,0))'"
