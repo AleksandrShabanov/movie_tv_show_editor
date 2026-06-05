@@ -457,7 +457,7 @@ def build_segment(
     # Номер: появляется сразу, то же угасание; белый с красным контуром, правый верхний угол
     font     = _find_font()
     font_opt = f"fontfile='{font}':" if font else ""
-    rating_str = f"  ★ {imdb_rating}" if imdb_rating is not None else ""
+    rating_str = f"  ★ IMDB\\: {imdb_rating}" if imdb_rating is not None else ""
     txt      = _dt_escape(f"{title.upper()}, {year}{rating_str}")
 
     title_filter = (
