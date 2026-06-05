@@ -334,7 +334,7 @@ def build_montage(
 # 5. ХЕЛПЕРЫ ДЛЯ АНИМИРОВАННЫХ ТИТРОВ
 # ─────────────────────────────────────────────
 
-def _find_font() -> str:
+def _load_pil_font(size: int):
     for p in [
         "/System/Library/Fonts/Supplemental/Impact.ttf",
         "/System/Library/Fonts/Helvetica.ttc",
@@ -342,17 +342,48 @@ def _find_font() -> str:
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     ]:
         if os.path.exists(p):
-            return p
-    return ""
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                continue
+    return ImageFont.load_default()
 
 
-def _dt_escape(text: str) -> str:
-    """Экранирует спецсимволы для ffmpeg drawtext text=."""
-    return (text
-            .replace("\\", "\\\\")
-            .replace("'",  "\\'")
-            .replace(":",  "\\:")
-            .replace("%",  "\\%"))
+def create_title_png(title: str, year: int, imdb_rating: float | None, output_path: str):
+    """Создаёт PNG плашки с названием фильма (прозрачный фон)."""
+    rating_str = f"  ★ IMDB: {imdb_rating}" if imdb_rating is not None else ""
+    text = f"{title.upper()}, {year}{rating_str}"
+    font = _load_pil_font(44)
+
+    dummy_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    bbox = dummy_draw.textbbox((0, 0), text, font=font, stroke_width=2)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+    pad = 18
+    img = Image.new("RGBA", (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rectangle([0, 0, img.width, img.height], fill=(0, 0, 0, 166))
+    draw.text((pad, pad), text, font=font, fill=(255, 255, 255, 255),
+              stroke_width=2, stroke_fill=(220, 0, 0, 255))
+    img.save(output_path, "PNG")
+
+
+def create_number_png(number: int, output_path: str):
+    """Создаёт PNG с цифрой номера (прозрачный фон)."""
+    text = str(number)
+    font = _load_pil_font(120)
+
+    dummy_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    bbox = dummy_draw.textbbox((0, 0), text, font=font, stroke_width=4)
+    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+    pad = 8
+    img = Image.new("RGBA", (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.text((pad, pad + 3), text, font=font, fill=(0, 0, 0, 160))  # shadow
+    draw.text((pad, pad), text, font=font, fill=(255, 255, 255, 255),
+              stroke_width=4, stroke_fill=(220, 0, 0, 255))
+    img.save(output_path, "PNG")
 
 
 # ─────────────────────────────────────────────
@@ -452,38 +483,28 @@ def build_segment(
     ]
     run_ffmpeg(cmd)
 
-    # --- Анимированные титры через drawtext ---
-    # Название: выезжает слева за 0.5s, держится, угасает за 0.5s (t=4.5→5.0)
-    # Номер: появляется сразу, то же угасание; белый с красным контуром, правый верхний угол
-    font     = _find_font()
-    font_opt = f"fontfile='{font}':" if font else ""
-    rating_str = f"  ★ IMDB\\: {imdb_rating}" if imdb_rating is not None else ""
-    txt      = _dt_escape(f"{title.upper()}, {year}{rating_str}")
+    # --- Анимированные титры: Pillow PNG + ffmpeg overlay (без drawtext) ---
+    # Плашка: выезжает слева за 0.5s, угасает 4.5→5s
+    # Цифра: правый верхний угол, то же угасание
+    title_png  = os.path.join(work_dir, f"seg{number}_title.png")
+    number_png = os.path.join(work_dir, f"seg{number}_number.png")
+    create_title_png(title, year, imdb_rating, title_png)
+    create_number_png(number, number_png)
 
-    title_filter = (
-        f"drawtext={font_opt}text='{txt}'"
-        ":fontsize=44:fontcolor=white"
-        ":bordercolor=red:borderw=2"
-        ":box=1:boxcolor=0x000000@0.65:boxborderw=18"
-        ":x='if(lt(t,0.5),-tw+(tw+80)*t/0.5,60)'"
-        ":y=h-120"
-        ":alpha='if(lt(t,4.5),1,if(lt(t,5.0),1-(t-4.5)/0.5,0))'"
-        ":enable='between(t,0,5.0)'"
-    )
-    number_filter = (
-        f"drawtext={font_opt}text='{number}'"
-        ":fontsize=120:fontcolor=white"
-        ":bordercolor=red:borderw=4"
-        ":shadowcolor=black:shadowx=3:shadowy=3"
-        ":x=w-tw-40:y=25"
-        ":alpha='if(lt(t,4.5),1,if(lt(t,5.0),1-(t-4.5)/0.5,0))'"
-        ":enable='between(t,0,5.0)'"
+    fc = (
+        "[1]format=rgba,fade=t=out:st=4.5:d=0.5:alpha=1[tf];"
+        "[2]format=rgba,fade=t=out:st=4.5:d=0.5:alpha=1[nf];"
+        "[0][tf]overlay="
+        "x='if(lt(t,0.5),-overlay_w+(overlay_w+60)*2*t,60)':y=H-120:format=auto:eof_action=pass[v1];"
+        "[v1][nf]overlay=x=W-overlay_w-40:y=25:format=auto:eof_action=pass"
     )
     overlay_video = os.path.join(work_dir, f"seg{number}_overlay.mp4")
     cmd = [
         "ffmpeg", "-y",
         "-i", concat_video,
-        "-vf", f"{title_filter},{number_filter}",
+        "-loop", "1", "-t", "5", "-i", title_png,
+        "-loop", "1", "-t", "5", "-i", number_png,
+        "-filter_complex", fc,
         "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
         "-r", "30", "-an",
         overlay_video,
