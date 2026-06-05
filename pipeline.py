@@ -16,6 +16,7 @@ import os
 import sys
 import json
 import time
+import random
 import argparse
 import subprocess
 import tempfile
@@ -48,6 +49,14 @@ DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"
 
 # Сколько секунд пропускать в начале трейлера (MPAA + студия)
 TRAILER_SKIP_SECONDS = 8
+
+# Сколько секунд пропускать в конце трейлера (финальные титры)
+TRAILER_END_SKIP = 20
+
+# Настройки интро/аутро монтажа
+INTRO_DURATION    = 15    # секунд
+OUTRO_DURATION    = 15    # секунд
+MONTAGE_CLIP_DUR  = 2.5   # длина одного клипа в монтаже
 
 # Сколько секунд показывать постер перед трейлером (с Ken Burns)
 POSTER_DURATION = 4
@@ -208,7 +217,121 @@ def download_poster(movie_title: str, year: int, output_dir: str) -> str | None:
 
 
 # ─────────────────────────────────────────────
-# 4. ОВЕРЛЕЙ (Pillow)
+# 4. МОНТАЖ ИНТРО / АУТРО
+# ─────────────────────────────────────────────
+
+def get_black_segments(video_path: str) -> list[tuple[float, float]]:
+    """Возвращает список (start, end) чёрных сегментов через ffmpeg blackdetect."""
+    cmd = [
+        "ffmpeg", "-i", video_path,
+        "-vf", "blackdetect=d=0.05:pix_th=0.10",
+        "-f", "null", "-"
+    ]
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    segments = []
+    for line in result.stderr.split("\n"):
+        if "black_start" in line:
+            try:
+                start = float(line.split("black_start:")[1].split()[0])
+                end   = float(line.split("black_end:")[1].split()[0])
+                segments.append((start, end))
+            except (IndexError, ValueError):
+                pass
+    return segments
+
+
+def _in_black(t: float, black_segs: list[tuple[float, float]], margin: float = 0.5) -> bool:
+    return any(s - margin <= t <= e + margin for s, e in black_segs)
+
+
+def build_montage(
+    trailer_paths: list[str],
+    total_duration: float,
+    output_path: str,
+    work_dir: str,
+    clip_dur: float = MONTAGE_CLIP_DUR,
+) -> str:
+    """
+    Нарезает короткие клипы из трейлеров и склеивает в монтаж заданной длины.
+    Пропускает начало (логотипы/студии), конец (титры) и чёрные кадры.
+    """
+    n_clips = max(len(trailer_paths), int(total_duration / clip_dur))
+    clips_per = max(1, round(n_clips / len(trailer_paths)))
+
+    clip_files = []
+    idx = 0
+
+    for trailer_path in trailer_paths:
+        try:
+            duration = get_audio_duration(trailer_path)
+        except Exception:
+            continue
+
+        safe_start = TRAILER_SKIP_SECONDS
+        safe_end   = duration - TRAILER_END_SKIP
+
+        if safe_end - safe_start < clip_dur * 2:
+            continue
+
+        black_segs  = get_black_segments(trailer_path)
+        segment_len = (safe_end - safe_start) / clips_per
+
+        for i in range(clips_per):
+            seg_s = safe_start + i * segment_len
+            seg_e = seg_s + segment_len - clip_dur
+            if seg_e <= seg_s:
+                continue
+
+            # Ищем момент вне чёрного кадра (до 10 попыток)
+            for _ in range(10):
+                t = random.uniform(seg_s, seg_e)
+                if not _in_black(t, black_segs):
+                    break
+
+            clip_out = os.path.join(work_dir, f"montage_{idx:04d}.mp4")
+            cmd = [
+                "ffmpeg", "-y",
+                "-ss", f"{t:.3f}",
+                "-i", trailer_path,
+                "-t", str(clip_dur),
+                "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,"
+                       "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1",
+                "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+                "-r", "30", "-an",
+                clip_out,
+            ]
+            try:
+                run_ffmpeg(cmd)
+                clip_files.append(clip_out)
+                idx += 1
+            except subprocess.CalledProcessError:
+                continue
+
+    if not clip_files:
+        raise RuntimeError("Не удалось извлечь клипы для монтажа")
+
+    random.shuffle(clip_files)
+
+    list_file = os.path.join(work_dir, f"montage_list_{os.path.basename(output_path)}.txt")
+    with open(list_file, "w") as f:
+        for c in clip_files:
+            f.write(f"file '{os.path.abspath(c)}'\n")
+
+    cmd = [
+        "ffmpeg", "-y",
+        "-f", "concat", "-safe", "0", "-i", list_file,
+        "-t", str(total_duration),
+        "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+        "-r", "30", "-an",
+        output_path,
+    ]
+    run_ffmpeg(cmd)
+    print(f"     ✓ Монтаж: {output_path} ({total_duration}s)")
+    return output_path
+
+
+# ─────────────────────────────────────────────
+# 5. ОВЕРЛЕЙ (Pillow)
 # ─────────────────────────────────────────────
 
 def create_overlay_png(number: int, title: str, year: int, output_path: str, w=1920, h=1080):
@@ -420,23 +543,34 @@ def main():
     parser.add_argument("--skip-voiceover", action="store_true", help="Пропустить генерацию войсовера (использовать готовые MP3)")
     args = parser.parse_args()
 
-    # Загружаем список фильмов
     with open(args.movies_json, encoding="utf-8") as f:
         data = json.load(f)
 
-    movies = data["movies"]
+    movies   = data["movies"]
     voice_id = data.get("voice_id", DEFAULT_VOICE_ID)
 
-    # Создаём рабочие директории
     work_dir = args.work_dir
     os.makedirs(work_dir, exist_ok=True)
-    os.makedirs(os.path.join(work_dir, "trailers"), exist_ok=True)
-    os.makedirs(os.path.join(work_dir, "posters"), exist_ok=True)
-    os.makedirs(os.path.join(work_dir, "voiceovers"), exist_ok=True)
-    os.makedirs(os.path.join(work_dir, "segments"), exist_ok=True)
+    for sub in ("trailers", "posters", "voiceovers", "segments", "montage"):
+        os.makedirs(os.path.join(work_dir, sub), exist_ok=True)
 
+    # ── Шаг 1: скачиваем все трейлеры сразу ──────────────────────────────
+    print("\n📥  Загрузка трейлеров...")
+    trailer_map: dict[int, str] = {}
+    for movie in movies:
+        trailer_map[movie["number"]] = download_trailer(
+            movie["title"], movie["year"], os.path.join(work_dir, "trailers")
+        )
+
+    # ── Шаг 2: интро ─────────────────────────────────────────────────────
+    intro_path = os.path.join(work_dir, "intro.mp4")
+    if not os.path.exists(intro_path):
+        print("\n🎬  Сборка интро...")
+        build_montage(list(trailer_map.values()), INTRO_DURATION, intro_path,
+                      os.path.join(work_dir, "montage"))
+
+    # ── Шаг 3: сегменты фильмов ───────────────────────────────────────────
     segments = []
-
     for movie in movies:
         number = movie["number"]
         title  = movie["title"]
@@ -445,38 +579,30 @@ def main():
 
         print(f"\n[{number}] {title} ({year})")
 
-        # Пути
         vo_path  = os.path.join(work_dir, "voiceovers", f"{number:02d}_{title.replace(' ', '_')}.mp3")
         seg_path = os.path.join(work_dir, "segments",   f"{number:02d}_{title.replace(' ', '_')}.mp4")
 
-        # Пропускаем готовые сегменты
         if os.path.exists(seg_path):
             print(f"     ↩  Сегмент уже есть, пропускаем")
             segments.append(seg_path)
             continue
 
-        # 1. Войсовер
         if not os.path.exists(vo_path):
             if args.skip_voiceover:
                 print(f"     ⚠  Войсовер не найден и --skip-voiceover включён, пропускаем {title}")
                 continue
             generate_voiceover(script, vo_path, voice_id)
 
-        # 2. Трейлер
-        trailer_raw = download_trailer(title, year, os.path.join(work_dir, "trailers"))
-
-        # 3. Постер
         print(f"  🖼  Скачиваем постер...")
         poster = download_poster(title, year, os.path.join(work_dir, "posters"))
 
-        # 4. Сборка сегмента
         print(f"  🔧  Сборка сегмента...")
         build_segment(
             number=number,
             title=title,
             year=year,
             voiceover_path=vo_path,
-            trailer_path=trailer_raw,
+            trailer_path=trailer_map[number],
             poster_path=poster,
             output_path=seg_path,
             work_dir=work_dir,
@@ -487,8 +613,15 @@ def main():
         print("❌  Нет готовых сегментов для сборки")
         sys.exit(1)
 
-    # 5. Финальная сборка
-    assemble_final(segments, args.output, work_dir)
+    # ── Шаг 4: аутро ─────────────────────────────────────────────────────
+    outro_path = os.path.join(work_dir, "outro.mp4")
+    if not os.path.exists(outro_path):
+        print("\n🎬  Сборка аутро...")
+        build_montage(list(trailer_map.values()), OUTRO_DURATION, outro_path,
+                      os.path.join(work_dir, "montage"))
+
+    # ── Шаг 5: финальная сборка ───────────────────────────────────────────
+    assemble_final([intro_path] + segments + [outro_path], args.output, work_dir)
 
 
 if __name__ == "__main__":
