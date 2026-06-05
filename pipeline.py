@@ -331,57 +331,28 @@ def build_montage(
 
 
 # ─────────────────────────────────────────────
-# 5. ОВЕРЛЕЙ (Pillow)
+# 5. ХЕЛПЕРЫ ДЛЯ АНИМИРОВАННЫХ ТИТРОВ
 # ─────────────────────────────────────────────
 
-def create_overlay_png(number: int, title: str, year: int, output_path: str, w=1920, h=1080):
-    """Создаёт прозрачный PNG с номером и плашкой названия."""
-    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+def _find_font() -> str:
+    for p in [
+        "/System/Library/Fonts/Supplemental/Impact.ttf",
+        "/System/Library/Fonts/Helvetica.ttc",
+        "/System/Library/Fonts/Arial.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]:
+        if os.path.exists(p):
+            return p
+    return ""
 
-    # Пробуем загрузить шрифт, иначе встроенный
-    def load_font(size):
-        candidates = [
-            "/System/Library/Fonts/Supplemental/Impact.ttf",
-            "/System/Library/Fonts/Helvetica.ttc",
-            "/System/Library/Fonts/Arial.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        ]
-        for path in candidates:
-            if os.path.exists(path):
-                try:
-                    return ImageFont.truetype(path, size)
-                except Exception:
-                    continue
-        return ImageFont.load_default()
 
-    font_large = load_font(72)
-    font_small = load_font(44)
-
-    # "NUMBER X" — сверху по центру с тенью
-    num_text = f"NUMBER {number}"
-    bbox = draw.textbbox((0, 0), num_text, font=font_large)
-    tw = bbox[2] - bbox[0]
-    tx = (w - tw) // 2
-    # тень
-    draw.text((tx + 3, 63), num_text, font=font_large, fill=(0, 0, 0, 180))
-    draw.text((tx, 60), num_text, font=font_large, fill=(255, 255, 255, 255))
-
-    # Плашка названия — снизу слева
-    title_text = f"{title.upper()}, {year}"
-    tbbox = draw.textbbox((0, 0), title_text, font=font_small)
-    tw2 = tbbox[2] - tbbox[0]
-    pad = 20
-    box_x, box_y = 60, h - 120
-    box_w, box_h = tw2 + pad * 2, 64
-
-    # Синяя подложка
-    draw.rectangle([box_x, box_y, box_x + box_w, box_y + box_h], fill=(26, 111, 196, 220))
-    # Текст на плашке
-    draw.text((box_x + pad + 2, box_y + 12 + 2), title_text, font=font_small, fill=(0, 0, 0, 150))
-    draw.text((box_x + pad, box_y + 12), title_text, font=font_small, fill=(255, 255, 255, 255))
-
-    img.save(output_path, "PNG")
+def _dt_escape(text: str) -> str:
+    """Экранирует спецсимволы для ffmpeg drawtext text=."""
+    return (text
+            .replace("\\", "\\\\")
+            .replace("'",  "\\'")
+            .replace(":",  "\\:")
+            .replace("%",  "\\%"))
 
 
 # ─────────────────────────────────────────────
@@ -417,31 +388,38 @@ def build_segment(
 
     parts = []
 
-    # --- Часть 1: Постер с Ken Burns ---
+    # --- Часть 1: Постер (blur background + медленный пан) ---
     print(f"     → Рендер постера...")
+    poster_part = os.path.join(work_dir, f"seg{number}_poster.mp4")
     if poster_path and os.path.exists(poster_path):
-        poster_part = os.path.join(work_dir, f"seg{number}_poster.mp4")
+        # Фон: постер растянут на весь экран с паном, размыт и затемнён
+        # Передний план: постер в оригинальных пропорциях по центру
+        fc = (
+            "[0]scale=2160:1215:force_original_aspect_ratio=increase,"
+            "crop=2160:1215:'(iw-2160)/2':'(ih-1215)/2'[src];"
+            f"[src]crop=1920:1080:'(iw-ow)*t/{POSTER_DURATION}':'(ih-oh)/2',"
+            "boxblur=22:4,eq=brightness=-0.2[bg];"
+            "[0]scale=1920:1080:force_original_aspect_ratio=decrease,"
+            "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[fg];"
+            "[bg][fg]overlay=0:0,setsar=1"
+        )
         cmd = [
             "ffmpeg", "-y",
             "-loop", "1", "-t", str(POSTER_DURATION), "-i", poster_path,
-            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1",
-            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
+            "-filter_complex", fc,
+            "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
             "-r", "30", "-an",
-            poster_part
+            poster_part,
         ]
-        run_ffmpeg(cmd)
-        parts.append(poster_part)
     else:
-        # Нет постера — просто чёрный экран
-        black_part = os.path.join(work_dir, f"seg{number}_black.mp4")
         cmd = [
             "ffmpeg", "-y",
             "-f", "lavfi", "-i", f"color=c=black:s=1920x1080:d={POSTER_DURATION}",
             "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p", "-an",
-            black_part
+            poster_part,
         ]
-        run_ffmpeg(cmd)
-        parts.append(black_part)
+    run_ffmpeg(cmd)
+    parts.append(poster_part)
 
     # --- Часть 2: Трейлер ---
     trailer_cut = os.path.join(work_dir, f"seg{number}_trailer_cut.mp4")
@@ -473,19 +451,39 @@ def build_segment(
     ]
     run_ffmpeg(cmd)
 
-    # --- Создаём PNG оверлей через Pillow ---
-    overlay_png = os.path.join(work_dir, f"seg{number}_overlay.png")
-    create_overlay_png(number, title, year, overlay_png)
+    # --- Анимированные титры через drawtext ---
+    # Название: выезжает слева за 0.5s, держится, угасает за 0.5s (t=4.5→5.0)
+    # Номер: появляется сразу, то же угасание; белый с красным контуром, правый верхний угол
+    font     = _find_font()
+    font_opt = f"fontfile='{font}':" if font else ""
+    txt      = _dt_escape(f"{title.upper()}, {year}")
 
+    title_filter = (
+        f"drawtext={font_opt}text='{txt}'"
+        ":fontsize=44:fontcolor=white"
+        ":box=1:boxcolor=0x1a6fc4@0.86:boxborderw=20"
+        ":x='if(lt(t,0.5),-tw+(tw+80)*t/0.5,60)'"
+        ":y=h-120"
+        ":alpha='if(lt(t,4.5),1,if(lt(t,5.0),1-(t-4.5)/0.5,0))'"
+        ":enable='between(t,0,5.0)'"
+    )
+    number_filter = (
+        f"drawtext={font_opt}text='{number}'"
+        ":fontsize=120:fontcolor=white"
+        ":bordercolor=red:borderw=4"
+        ":shadowcolor=black:shadowx=3:shadowy=3"
+        ":x=w-tw-40:y=25"
+        ":alpha='if(lt(t,4.5),1,if(lt(t,5.0),1-(t-4.5)/0.5,0))'"
+        ":enable='between(t,0,5.0)'"
+    )
     overlay_video = os.path.join(work_dir, f"seg{number}_overlay.mp4")
     cmd = [
         "ffmpeg", "-y",
         "-i", concat_video,
-        "-i", overlay_png,
-        "-filter_complex", "overlay=0:0",
+        "-vf", f"{title_filter},{number_filter}",
         "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
         "-r", "30", "-an",
-        overlay_video
+        overlay_video,
     ]
     run_ffmpeg(cmd)
 
