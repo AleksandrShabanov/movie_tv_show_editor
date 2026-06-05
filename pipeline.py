@@ -368,6 +368,7 @@ def build_segment(
     poster_path: str | None,
     output_path: str,
     work_dir: str,
+    imdb_rating: float | None = None,
 ) -> str:
     """
     Собирает сегмент для одного фильма:
@@ -456,7 +457,8 @@ def build_segment(
     # Номер: появляется сразу, то же угасание; белый с красным контуром, правый верхний угол
     font     = _find_font()
     font_opt = f"fontfile='{font}':" if font else ""
-    txt      = _dt_escape(f"{title.upper()}, {year}")
+    rating_str = f"  ★ {imdb_rating}" if imdb_rating is not None else ""
+    txt      = _dt_escape(f"{title.upper()}, {year}{rating_str}")
 
     title_filter = (
         f"drawtext={font_opt}text='{txt}'"
@@ -571,10 +573,11 @@ def main():
     # ── Шаг 3: сегменты фильмов ───────────────────────────────────────────
     segments = []
     for movie in movies:
-        number = movie["number"]
-        title  = movie["title"]
-        year   = movie["year"]
-        script = movie["voiceover_text"]
+        number      = movie["number"]
+        title       = movie["title"]
+        year        = movie["year"]
+        script      = movie["voiceover_text"]
+        imdb_rating = movie.get("imdb_rating")
 
         print(f"\n[{number}] {title} ({year})")
 
@@ -605,6 +608,7 @@ def main():
             poster_path=poster,
             output_path=seg_path,
             work_dir=work_dir,
+            imdb_rating=imdb_rating,
         )
         segments.append(seg_path)
 
