@@ -565,10 +565,23 @@ def main():
 
     # ── Шаг 2: интро ─────────────────────────────────────────────────────
     intro_path = os.path.join(work_dir, "intro.mp4")
+    intro_vo_text = data.get("intro_voiceover")
     if not os.path.exists(intro_path):
         print("\n🎬  Сборка интро...")
-        build_montage(list(trailer_map.values()), INTRO_DURATION, intro_path,
+        intro_silent = os.path.join(work_dir, "intro_silent.mp4")
+        build_montage(list(trailer_map.values()), INTRO_DURATION, intro_silent,
                       os.path.join(work_dir, "montage"))
+        if intro_vo_text and not args.skip_voiceover:
+            intro_vo = os.path.join(work_dir, "intro_vo.mp3")
+            generate_voiceover(intro_vo_text, intro_vo, voice_id)
+            run_ffmpeg([
+                "ffmpeg", "-y",
+                "-i", intro_silent, "-i", intro_vo,
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
+                intro_path,
+            ])
+        else:
+            os.rename(intro_silent, intro_path)
 
     # ── Шаг 3: сегменты фильмов ───────────────────────────────────────────
     segments = []
@@ -618,10 +631,23 @@ def main():
 
     # ── Шаг 4: аутро ─────────────────────────────────────────────────────
     outro_path = os.path.join(work_dir, "outro.mp4")
+    outro_vo_text = data.get("outro_voiceover")
     if not os.path.exists(outro_path):
         print("\n🎬  Сборка аутро...")
-        build_montage(list(trailer_map.values()), OUTRO_DURATION, outro_path,
+        outro_silent = os.path.join(work_dir, "outro_silent.mp4")
+        build_montage(list(trailer_map.values()), OUTRO_DURATION, outro_silent,
                       os.path.join(work_dir, "montage"))
+        if outro_vo_text and not args.skip_voiceover:
+            outro_vo = os.path.join(work_dir, "outro_vo.mp3")
+            generate_voiceover(outro_vo_text, outro_vo, voice_id)
+            run_ffmpeg([
+                "ffmpeg", "-y",
+                "-i", outro_silent, "-i", outro_vo,
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
+                outro_path,
+            ])
+        else:
+            os.rename(outro_silent, outro_path)
 
     # ── Шаг 5: финальная сборка ───────────────────────────────────────────
     assemble_final([intro_path] + segments + [outro_path], args.output, work_dir)
