@@ -135,35 +135,39 @@ def download_trailer(movie_title: str, year: int, output_dir: str) -> str:
         print(f"     ↩  Трейлер уже есть: {output_path}")
         return output_path
 
-    query = f"{movie_title} {year} official trailer"
-    print(f"  🎬  Скачиваем трейлер: {query}")
-
-    # Получаем до 5 URL из поиска и пробуем по очереди
-    search_cmd = [
-        "yt-dlp", f"ytsearch5:{query}",
-        "--flat-playlist", "--print", "%(url)s",
-        "--quiet", "--no-warnings",
+    queries = [
+        f"{movie_title} {year} official trailer",
+        f"{movie_title} {year} trailer",
+        f"{movie_title} trailer {year}",
     ]
-    result = subprocess.run(search_cmd, capture_output=True, text=True)
-    urls = [u.strip() for u in result.stdout.strip().splitlines() if u.strip()]
+    print(f"  🎬  Скачиваем трейлер: {movie_title} ({year})")
 
-    for url in urls:
-        try:
-            subprocess.run([
-                "yt-dlp", url,
-                "--format", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
-                "--merge-output-format", "mp4",
-                "--output", output_path,
-                "--no-playlist", "--quiet", "--no-warnings",
-            ], check=True)
-            print(f"     ✓ Трейлер: {output_path}")
-            return output_path
-        except subprocess.CalledProcessError:
-            print(f"     ↩  Недоступен, пробуем следующий...")
-            if os.path.exists(output_path):
-                os.remove(output_path)
+    for query in queries:
+        search_cmd = [
+            "yt-dlp", f"ytsearch5:{query}",
+            "--flat-playlist", "--print", "%(url)s",
+            "--quiet", "--no-warnings",
+        ]
+        result = subprocess.run(search_cmd, capture_output=True, text=True)
+        urls = [u.strip() for u in result.stdout.strip().splitlines() if u.strip()]
 
-    raise RuntimeError(f"Не удалось скачать трейлер для: {movie_title}")
+        for url in urls:
+            try:
+                subprocess.run([
+                    "yt-dlp", url,
+                    "--format", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
+                    "--merge-output-format", "mp4",
+                    "--output", output_path,
+                    "--no-playlist", "--quiet", "--no-warnings",
+                ], check=True)
+                if os.path.exists(output_path):
+                    print(f"     ✓ Трейлер: {output_path}")
+                    return output_path
+            except subprocess.CalledProcessError:
+                if os.path.exists(output_path):
+                    os.remove(output_path)
+
+    return None
 
 
 def trim_trailer_intro(input_path: str, output_path: str, skip: int = TRAILER_SKIP_SECONDS) -> str:
@@ -660,9 +664,13 @@ def main():
     print("\n📥  Загрузка трейлеров...")
     trailer_map: dict[int, str] = {}
     for movie in movies:
-        trailer_map[movie["number"]] = download_trailer(
+        trailer = download_trailer(
             movie["title"], movie["year"], os.path.join(work_dir, "trailers")
         )
+        if trailer:
+            trailer_map[movie["number"]] = trailer
+        else:
+            print(f"     ⚠  Трейлер не найден для: {movie['title']} — фильм будет пропущен")
 
     # ── Шаг 2: интро ─────────────────────────────────────────────────────
     intro_path = os.path.join(work_dir, "intro.mp4")
@@ -708,6 +716,10 @@ def main():
         if os.path.exists(seg_path):
             print(f"     ↩  Сегмент уже есть, пропускаем")
             segments.append(seg_path)
+            continue
+
+        if number not in trailer_map:
+            print(f"     ⚠  Нет трейлера, пропускаем сегмент")
             continue
 
         if not os.path.exists(vo_path):
