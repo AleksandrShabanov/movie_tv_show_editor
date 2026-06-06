@@ -480,28 +480,23 @@ def build_segment(
     title: str,
     year: int,
     voiceover_path: str,
-    trailer_path: str,
+    trailer_path: str | None,
     poster_path: str | None,
     output_path: str,
     work_dir: str,
     imdb_rating: float | None = None,
 ) -> str:
     """
-    Собирает сегмент для одного фильма:
-    - Постер с Ken Burns (POSTER_DURATION сек)
-    - Трейлер (оставшееся время до конца войсовера)
-    - Войсовер поверх всего
-    - Плашка с номером и названием
+    Собирает сегмент для одного фильма.
+    Если trailer_path is None — сегмент состоит только из постера на всю длину войсовера.
     """
     print(f"     → Длительность войсовера...")
     vo_duration = get_audio_duration(voiceover_path)
     trailer_duration = max(vo_duration - POSTER_DURATION, 3.0)
-    print(f"     → Войсовер: {vo_duration:.1f}s, трейлер будет: {trailer_duration:.1f}s")
-
-    # Обрезаем трейлер до нужной длины
-    trimmed_trailer = os.path.join(work_dir, f"seg{number}_trailer_trimmed.mp4")
-    print(f"     → Обрезка интро трейлера...")
-    trim_trailer_intro(trailer_path, trimmed_trailer)
+    if trailer_path:
+        print(f"     → Войсовер: {vo_duration:.1f}s, трейлер будет: {trailer_duration:.1f}s")
+    else:
+        print(f"     → Войсовер: {vo_duration:.1f}s, трейлер недоступен — только постер")
 
     parts = []
 
@@ -537,19 +532,51 @@ def build_segment(
     run_ffmpeg(cmd)
     parts.append(poster_part)
 
-    # --- Часть 2: Трейлер ---
-    trailer_cut = os.path.join(work_dir, f"seg{number}_trailer_cut.mp4")
-    cmd = [
-        "ffmpeg", "-y",
-        "-i", trimmed_trailer,
-        "-t", str(trailer_duration),
-        "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1",
-        "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
-        "-r", "30", "-an",
-        trailer_cut
-    ]
-    run_ffmpeg(cmd)
-    parts.append(trailer_cut)
+    # --- Часть 2: Трейлер (если доступен) ---
+    if trailer_path:
+        trimmed_trailer = os.path.join(work_dir, f"seg{number}_trailer_trimmed.mp4")
+        print(f"     → Обрезка интро трейлера...")
+        trim_trailer_intro(trailer_path, trimmed_trailer)
+
+        trailer_cut = os.path.join(work_dir, f"seg{number}_trailer_cut.mp4")
+        run_ffmpeg([
+            "ffmpeg", "-y",
+            "-i", trimmed_trailer,
+            "-t", str(trailer_duration),
+            "-vf", "scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1",
+            "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+            "-r", "30", "-an",
+            trailer_cut,
+        ])
+        parts.append(trailer_cut)
+    else:
+        # Нет трейлера — продлеваем постер на весь войсовер
+        poster_part_full = os.path.join(work_dir, f"seg{number}_poster_full.mp4")
+        if poster_path and os.path.exists(poster_path):
+            fc = (
+                "[0]scale=1920:1080:force_original_aspect_ratio=increase,"
+                "crop=1920:1080:(iw-ow)/2:(ih-oh)/2,"
+                "boxblur=20:4,eq=brightness=-0.3[bg];"
+                "[0]scale=1920:1080:force_original_aspect_ratio=decrease,"
+                "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[fg];"
+                "[bg][fg]overlay=0:0,setsar=1"
+            )
+            run_ffmpeg([
+                "ffmpeg", "-y",
+                "-loop", "1", "-t", str(trailer_duration), "-i", poster_path,
+                "-filter_complex", fc,
+                "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
+                "-r", "30", "-an",
+                poster_part_full,
+            ])
+        else:
+            run_ffmpeg([
+                "ffmpeg", "-y",
+                "-f", "lavfi", "-i", f"color=c=black:s=1920x1080:d={trailer_duration}",
+                "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p", "-an",
+                poster_part_full,
+            ])
+        parts.append(poster_part_full)
 
     # --- Конкатенируем части ---
     concat_video = os.path.join(work_dir, f"seg{number}_concat.mp4")
@@ -718,10 +745,6 @@ def main():
             segments.append(seg_path)
             continue
 
-        if number not in trailer_map:
-            print(f"     ⚠  Нет трейлера, пропускаем сегмент")
-            continue
-
         if not os.path.exists(vo_path):
             if args.skip_voiceover:
                 print(f"     ⚠  Войсовер не найден и --skip-voiceover включён, пропускаем {title}")
@@ -737,7 +760,7 @@ def main():
             title=title,
             year=year,
             voiceover_path=vo_path,
-            trailer_path=trailer_map[number],
+            trailer_path=trailer_map.get(number),
             poster_path=poster,
             output_path=seg_path,
             work_dir=work_dir,
