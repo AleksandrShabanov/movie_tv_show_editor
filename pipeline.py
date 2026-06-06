@@ -16,6 +16,7 @@ import os
 import sys
 import json
 import time
+import math
 import random
 import argparse
 import subprocess
@@ -137,19 +138,32 @@ def download_trailer(movie_title: str, year: int, output_dir: str) -> str:
     query = f"{movie_title} {year} official trailer"
     print(f"  🎬  Скачиваем трейлер: {query}")
 
-    cmd = [
-        "yt-dlp",
-        f"ytsearch1:{query}",
-        "--format", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
-        "--merge-output-format", "mp4",
-        "--output", output_path,
-        "--no-playlist",
-        "--quiet",
-        "--no-warnings",
+    # Получаем до 5 URL из поиска и пробуем по очереди
+    search_cmd = [
+        "yt-dlp", f"ytsearch5:{query}",
+        "--flat-playlist", "--print", "%(url)s",
+        "--quiet", "--no-warnings",
     ]
-    subprocess.run(cmd, check=True)
-    print(f"     ✓ Трейлер: {output_path}")
-    return output_path
+    result = subprocess.run(search_cmd, capture_output=True, text=True)
+    urls = [u.strip() for u in result.stdout.strip().splitlines() if u.strip()]
+
+    for url in urls:
+        try:
+            subprocess.run([
+                "yt-dlp", url,
+                "--format", "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]/best",
+                "--merge-output-format", "mp4",
+                "--output", output_path,
+                "--no-playlist", "--quiet", "--no-warnings",
+            ], check=True)
+            print(f"     ✓ Трейлер: {output_path}")
+            return output_path
+        except subprocess.CalledProcessError:
+            print(f"     ↩  Недоступен, пробуем следующий...")
+            if os.path.exists(output_path):
+                os.remove(output_path)
+
+    raise RuntimeError(f"Не удалось скачать трейлер для: {movie_title}")
 
 
 def trim_trailer_intro(input_path: str, output_path: str, skip: int = TRAILER_SKIP_SECONDS) -> str:
@@ -349,40 +363,107 @@ def _load_pil_font(size: int):
     return ImageFont.load_default()
 
 
-def create_title_png(title: str, year: int, imdb_rating: float | None, output_path: str):
-    """Создаёт PNG плашки с названием фильма (прозрачный фон)."""
-    rating_str = f"  ★ IMDB: {imdb_rating}" if imdb_rating is not None else ""
-    text = f"{title.upper()}, {year}{rating_str}"
-    font = _load_pil_font(44)
+def _star_polygon(cx: float, cy: float, r_outer: float, r_inner: float) -> list:
+    pts = []
+    for i in range(10):
+        angle = math.radians(i * 36 - 90)
+        r = r_outer if i % 2 == 0 else r_inner
+        pts.append((cx + r * math.cos(angle), cy + r * math.sin(angle)))
+    return pts
 
-    dummy_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    bbox = dummy_draw.textbbox((0, 0), text, font=font, stroke_width=2)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+
+def create_title_png(title: str, year: int, imdb_rating: float | None, output_path: str):
+    """Создаёт PNG плашки с названием фильма — золотая плашка с закруглёнными углами."""
+    font = _load_pil_font(44)
+    stroke = 2
+    title_text = f"{title.upper()}, {year}"
+
+    dummy = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    tb = dummy.textbbox((0, 0), title_text, font=font, stroke_width=stroke)
+    title_w = tb[2] - tb[0]
+    title_h = tb[3] - tb[1]
+
+    if imdb_rating is not None:
+        rating_text = f"IMDB: {imdb_rating}"
+        rb = dummy.textbbox((0, 0), rating_text, font=font, stroke_width=stroke)
+        rating_w = rb[2] - rb[0]
+        star_r = title_h // 2
+        gap = 12
+        total_w = title_w + gap + star_r * 2 + gap + rating_w
+    else:
+        rating_text = None
+        rb = None
+        total_w = title_w
 
     pad = 18
-    img = Image.new("RGBA", (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
+    img_w = total_w + pad * 2
+    img_h = title_h + pad * 2
+
+    img = Image.new("RGBA", (img_w, img_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.rectangle([0, 0, img.width, img.height], fill=(0, 0, 0, 166))
-    draw.text((pad, pad), text, font=font, fill=(255, 255, 255, 255),
-              stroke_width=2, stroke_fill=(220, 0, 0, 255))
+
+    # Золотая плашка с закруглёнными углами
+    draw.rounded_rectangle([0, 0, img_w - 1, img_h - 1], radius=14,
+                            fill=(212, 175, 55, 225))
+
+    # Название
+    draw.text((pad - tb[0], pad - tb[1]), title_text, font=font,
+              fill=(255, 255, 255, 255), stroke_width=stroke, stroke_fill=(80, 40, 0, 255))
+
+    if rating_text is not None:
+        # Звезда как полигон (не зависит от поддержки юникода шрифтом)
+        star_cx = pad + title_w + gap + star_r
+        star_cy = img_h // 2
+        draw.polygon(_star_polygon(star_cx, star_cy, star_r + 2, star_r * 0.4 + 1),
+                     fill=(80, 40, 0, 255))
+        draw.polygon(_star_polygon(star_cx, star_cy, star_r, star_r * 0.4),
+                     fill=(255, 255, 255, 255))
+
+        # Рейтинг
+        rx = pad + title_w + gap + star_r * 2 + gap - rb[0]
+        ry = pad - rb[1]
+        draw.text((rx, ry), rating_text, font=font, fill=(255, 255, 255, 255),
+                  stroke_width=stroke, stroke_fill=(80, 40, 0, 255))
+
     img.save(output_path, "PNG")
 
 
 def create_number_png(number: int, output_path: str):
-    """Создаёт PNG с цифрой номера (прозрачный фон)."""
+    """Создаёт PNG с номером на золотой медали."""
     text = str(number)
-    font = _load_pil_font(120)
+    font = _load_pil_font(100)
+    stroke = 3
 
-    dummy_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    bbox = dummy_draw.textbbox((0, 0), text, font=font, stroke_width=4)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    dummy = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    bbox = dummy.textbbox((0, 0), text, font=font, stroke_width=stroke)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
 
-    pad = 8
-    img = Image.new("RGBA", (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
+    medal_r = max(tw, th) // 2 + 24
+    size = medal_r * 2 + 14
+
+    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    draw.text((pad, pad + 3), text, font=font, fill=(0, 0, 0, 160))  # shadow
-    draw.text((pad, pad), text, font=font, fill=(255, 255, 255, 255),
-              stroke_width=4, stroke_fill=(220, 0, 0, 255))
+    cx, cy = size // 2, size // 2
+
+    # Тень медали
+    draw.ellipse([cx - medal_r + 5, cy - medal_r + 5, cx + medal_r + 5, cy + medal_r + 5],
+                 fill=(0, 0, 0, 80))
+    # Внешнее кольцо (тёмное золото)
+    draw.ellipse([cx - medal_r, cy - medal_r, cx + medal_r, cy + medal_r],
+                 fill=(160, 120, 10, 255))
+    # Внутренний круг (яркое золото)
+    inner_r = medal_r - 8
+    draw.ellipse([cx - inner_r, cy - inner_r, cx + inner_r, cy + inner_r],
+                 fill=(212, 175, 55, 255))
+
+    # Цифра по центру медали
+    tx = cx - (bbox[0] + bbox[2]) // 2
+    ty = cy - (bbox[1] + bbox[3]) // 2
+    draw.text((tx + 2, ty + 3), text, font=font, fill=(0, 0, 0, 90))   # тень
+    draw.text((tx, ty), text, font=font, fill=(255, 255, 255, 255),
+              stroke_width=stroke, stroke_fill=(80, 40, 0, 255))
+
     img.save(output_path, "PNG")
 
 
@@ -424,13 +505,12 @@ def build_segment(
     print(f"     → Рендер постера...")
     poster_part = os.path.join(work_dir, f"seg{number}_poster.mp4")
     if poster_path and os.path.exists(poster_path):
-        # Фон: постер растянут на весь экран с паном, размыт и затемнён
+        # Фон: постер растянут на весь экран с размытием и затемнением
         # Передний план: постер в оригинальных пропорциях по центру
         fc = (
-            "[0]scale=2160:1215:force_original_aspect_ratio=increase,"
-            "crop=2160:1215:'(iw-2160)/2':'(ih-1215)/2'[src];"
-            f"[src]crop=1920:1080:'(iw-ow)*t/{POSTER_DURATION}':'(ih-oh)/2',"
-            "boxblur=22:4,eq=brightness=-0.2[bg];"
+            "[0]scale=1920:1080:force_original_aspect_ratio=increase,"
+            "crop=1920:1080:(iw-ow)/2:(ih-oh)/2,"
+            "boxblur=20:4,eq=brightness=-0.3[bg];"
             "[0]scale=1920:1080:force_original_aspect_ratio=decrease,"
             "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1[fg];"
             "[bg][fg]overlay=0:0,setsar=1"
@@ -493,7 +573,7 @@ def build_segment(
 
     fc = (
         "[1]format=rgba,fade=t=out:st=4.5:d=0.5:alpha=1[tf];"
-        "[2]format=rgba,fade=t=out:st=4.5:d=0.5:alpha=1[nf];"
+        "[2]format=rgba,fade=t=out:st=9.5:d=0.5:alpha=1[nf];"
         "[0][tf]overlay="
         "x='if(lt(t,0.5),-overlay_w+(overlay_w+60)*2*t,60)':y=H-120:format=auto:eof_action=pass[v1];"
         "[v1][nf]overlay=x=W-overlay_w-40:y=25:format=auto:eof_action=pass"
@@ -503,7 +583,7 @@ def build_segment(
         "ffmpeg", "-y",
         "-i", concat_video,
         "-loop", "1", "-t", "5", "-i", title_png,
-        "-loop", "1", "-t", "5", "-i", number_png,
+        "-loop", "1", "-t", "10", "-i", number_png,
         "-filter_complex", fc,
         "-c:v", "libx264", "-preset", "fast", "-pix_fmt", "yuv420p",
         "-r", "30", "-an",
@@ -589,16 +669,23 @@ def main():
     intro_vo_text = data.get("intro_voiceover")
     if not os.path.exists(intro_path):
         print("\n🎬  Сборка интро...")
-        intro_silent = os.path.join(work_dir, "intro_silent.mp4")
-        build_montage(list(trailer_map.values()), INTRO_DURATION, intro_silent,
-                      os.path.join(work_dir, "montage"))
+        # Войсовер генерируется ПЕРВЫМ, чтобы знать точную длину монтажа
+        intro_vo = None
+        intro_duration = INTRO_DURATION
         if intro_vo_text and not args.skip_voiceover:
             intro_vo = os.path.join(work_dir, "intro_vo.mp3")
-            generate_voiceover(intro_vo_text, intro_vo, voice_id)
+            if not os.path.exists(intro_vo):
+                generate_voiceover(intro_vo_text, intro_vo, voice_id)
+            intro_duration = get_audio_duration(intro_vo)
+
+        intro_silent = os.path.join(work_dir, "intro_silent.mp4")
+        build_montage(list(trailer_map.values()), intro_duration, intro_silent,
+                      os.path.join(work_dir, "montage"))
+        if intro_vo:
             run_ffmpeg([
                 "ffmpeg", "-y",
                 "-i", intro_silent, "-i", intro_vo,
-                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                 intro_path,
             ])
         else:
@@ -655,16 +742,23 @@ def main():
     outro_vo_text = data.get("outro_voiceover")
     if not os.path.exists(outro_path):
         print("\n🎬  Сборка аутро...")
-        outro_silent = os.path.join(work_dir, "outro_silent.mp4")
-        build_montage(list(trailer_map.values()), OUTRO_DURATION, outro_silent,
-                      os.path.join(work_dir, "montage"))
+        # Войсовер генерируется ПЕРВЫМ, чтобы знать точную длину монтажа
+        outro_vo = None
+        outro_duration = OUTRO_DURATION
         if outro_vo_text and not args.skip_voiceover:
             outro_vo = os.path.join(work_dir, "outro_vo.mp3")
-            generate_voiceover(outro_vo_text, outro_vo, voice_id)
+            if not os.path.exists(outro_vo):
+                generate_voiceover(outro_vo_text, outro_vo, voice_id)
+            outro_duration = get_audio_duration(outro_vo)
+
+        outro_silent = os.path.join(work_dir, "outro_silent.mp4")
+        build_montage(list(trailer_map.values()), outro_duration, outro_silent,
+                      os.path.join(work_dir, "montage"))
+        if outro_vo:
             run_ffmpeg([
                 "ffmpeg", "-y",
                 "-i", outro_silent, "-i", outro_vo,
-                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k", "-shortest",
+                "-c:v", "copy", "-c:a", "aac", "-b:a", "192k",
                 outro_path,
             ])
         else:
