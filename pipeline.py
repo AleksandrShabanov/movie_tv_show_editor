@@ -266,18 +266,34 @@ def _imdb_graphql(query: str) -> dict:
     return resp.json()
 
 
+def _norm_title(s: str) -> str:
+    """Нормализует название для сравнения: убирает регистр, диакритику и всё,
+    кроме букв/цифр (так «Rocket Man» ≡ «RocketMan», «André» ≡ «Andre»)."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    return re.sub(r"[^a-z0-9]", "", s.lower())
+
+
 def _imdb_find_title_id(title: str, year: int) -> str | None:
-    """Находит tt-id фильма через suggestion-API IMDB (совпадение по названию и году)."""
+    """Находит tt-id фильма через suggestion-API IMDB (совпадение по названию и году).
+    Делает два запроса (по названию и по «название год») и сравнивает названия
+    нормализованно — устойчиво к написанию слитно/раздельно и диакритике.
+    """
     from urllib.parse import quote
-    url = f"https://v3.sg.media-imdb.com/suggestion/x/{quote(title)}.json?includeVideos=0"
-    try:
-        data = _imdb_request("GET", url).json()
-    except Exception:
-        return None
-    cands = [
-        r for r in data.get("d", [])
-        if r.get("id", "").startswith("tt") and r.get("l", "").lower() == title.lower()
-    ]
+    want = _norm_title(title)
+    cands = []
+    seen = set()
+    for q in (title, f"{title} {year}"):
+        url = f"https://v3.sg.media-imdb.com/suggestion/x/{quote(q)}.json?includeVideos=0"
+        try:
+            data = _imdb_request("GET", url).json()
+        except Exception:
+            continue
+        for r in data.get("d", []):
+            rid = r.get("id", "")
+            if rid.startswith("tt") and rid not in seen and _norm_title(r.get("l", "")) == want:
+                seen.add(rid)
+                cands.append(r)
     for r in cands:                                   # точное совпадение года
         if r.get("y") == year:
             return r["id"]
