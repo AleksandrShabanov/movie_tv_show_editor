@@ -1630,7 +1630,7 @@ def assemble_final(segments: list[str], output_path: str, work_dir: str) -> str:
 def main():
     parser = argparse.ArgumentParser(description="Movie Top Video Pipeline")
     parser.add_argument("movies_json", help="JSON файл со списком фильмов")
-    parser.add_argument("--output", default="final.mp4", help="Путь к финальному видео")
+    parser.add_argument("--output", default=None, help="Путь к финальному видео (по умолчанию — из имени входного JSON)")
     parser.add_argument("--work-dir", default=None, help="Рабочая директория (по умолчанию — из имени выходного файла)")
     parser.add_argument("--skip-voiceover", action="store_true", help="Пропустить генерацию войсовера (использовать готовые MP3)")
     args = parser.parse_args()
@@ -1641,6 +1641,11 @@ def main():
     movies   = data["movies"]
     voice_id = data.get("voice_id", DEFAULT_VOICE_ID)
 
+    # По умолчанию имя вывода и воркдир выводятся из имени входного JSON,
+    # чтобы разные сборки не затирали друг друга (общий final.mp4).
+    input_stem = os.path.splitext(os.path.basename(args.movies_json))[0]
+    if args.output is None:
+        args.output = f"{input_stem}.mp4"
     if args.work_dir is None:
         stem = os.path.splitext(os.path.basename(args.output))[0]
         args.work_dir = f"./pipeline_work_{stem}"
