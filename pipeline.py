@@ -274,33 +274,69 @@ def _norm_title(s: str) -> str:
     return re.sub(r"[^a-z0-9]", "", s.lower())
 
 
+def _title_tokens(s: str) -> set[str]:
+    """Слова названия в нормализованном виде (для сравнения по подмножеству)."""
+    import unicodedata
+    s = unicodedata.normalize("NFKD", s).encode("ascii", "ignore").decode()
+    return set(re.sub(r"[^a-z0-9 ]", " ", s.lower()).split())
+
+
 def _imdb_find_title_id(title: str, year: int) -> str | None:
-    """Находит tt-id фильма через suggestion-API IMDB (совпадение по названию и году).
-    Делает два запроса (по названию и по «название год») и сравнивает названия
-    нормализованно — устойчиво к написанию слитно/раздельно и диакритике.
+    """Находит tt-id фильма через suggestion-API IMDB.
+
+    Делает два запроса (по названию и по «название год»), собирает кандидатов
+    и выбирает по тир-логике, где год — сильный сигнал наравне с названием.
+    Это устойчиво к вариантам написания:
+      • слитно/раздельно и диакритика («RocketMan», «Andre»)
+      • подзаголовки («Star Wars: Episode III - Revenge of the Sith»)
+      • стилизация, где имя не помогает («Se7en» → IMDB «Seven», спасает год)
     """
     from urllib.parse import quote
     want = _norm_title(title)
-    cands = []
+    want_tok = _title_tokens(title)
+
+    cands = []          # [{id, y, norm, tok, rank}]
     seen = set()
-    for q in (title, f"{title} {year}"):
+    # Ранги первого запроса (по названию) идут 0.., второго — с большим сдвигом,
+    # чтобы rank 0 основной выдачи всегда побеждал.
+    for qi, q in enumerate((title, f"{title} {year}")):
         url = f"https://v3.sg.media-imdb.com/suggestion/x/{quote(q)}.json?includeVideos=0"
         try:
             data = _imdb_request("GET", url).json()
         except Exception:
             continue
-        for r in data.get("d", []):
+        for idx, r in enumerate(data.get("d", [])):
             rid = r.get("id", "")
-            if rid.startswith("tt") and rid not in seen and _norm_title(r.get("l", "")) == want:
-                seen.add(rid)
-                cands.append(r)
-    for r in cands:                                   # точное совпадение года
-        if r.get("y") == year:
-            return r["id"]
-    for r in cands:                                   # ±1 год
-        if r.get("y") and abs(r["y"] - year) <= 1:
-            return r["id"]
-    return cands[0]["id"] if cands else None          # иначе — лучший по названию
+            if not rid.startswith("tt") or rid in seen:
+                continue
+            seen.add(rid)
+            cands.append({
+                "id": rid, "y": r.get("y"), "rank": qi * 1000 + idx,
+                "norm": _norm_title(r.get("l", "")),
+                "tok": _title_tokens(r.get("l", "")),
+            })
+
+    def year_exact(c): return c["y"] == year
+    def year_near(c):  return c["y"] is not None and abs(c["y"] - year) <= 1
+    def name_exact(c): return c["norm"] == want
+    def tok_match(c):  return bool(want_tok) and (want_tok <= c["tok"] or c["tok"] <= want_tok)
+    # позиция в выдаче решает (настоящий фильм почти всегда rank 0),
+    # число «лишних» слов — вторичный тайбрейк
+    def sort_key(c):   return (c["rank"], len(want_tok ^ c["tok"]))
+
+    tiers = [
+        lambda c: name_exact(c) and year_exact(c),                  # 1
+        lambda c: name_exact(c) and year_near(c),                   # 2
+        lambda c: tok_match(c) and year_exact(c),                   # 3
+        lambda c: tok_match(c) and year_near(c),                    # 4
+        lambda c: year_exact(c) and c["rank"] <= 2,                 # 5: имя не помогло — год+топ выдачи
+        name_exact,                                                 # 6: точное имя, любой год
+    ]
+    for match in tiers:
+        picked = sorted((c for c in cands if match(c)), key=sort_key)
+        if picked:
+            return picked[0]["id"]
+    return cands[0]["id"] if cands else None          # иначе — первый кандидат
 
 
 def _imdb_best_trailer(tt: str) -> tuple[str, int] | None:
