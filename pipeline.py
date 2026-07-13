@@ -367,16 +367,76 @@ def _imdb_best_trailer(tt: str) -> tuple[str, int] | None:
     return best[1], best[2]
 
 
-def download_trailer(movie_title: str, year: int, output_dir: str) -> str:
-    """Скачивает трейлер с IMDB (self-hosted, без DRM и PO-токенов YouTube)."""
-    safe_name = "".join(c for c in movie_title if c.isalnum() or c in " _-").strip().replace(" ", "_")
-    output_path = os.path.join(output_dir, f"{safe_name}_{year}_trailer.mp4")
+# Каналы-агрегаторы с водяными знаками — исключаем из поиска на YouTube
+YT_BLOCKED_UPLOADERS = r"(?i)(movieclips|fandango|clipsandtrailers)"
+# Формат: HD h264 ≤1080p (avc1 — для совместимости с ffmpeg), затем любой ≥720p
+YT_FORMAT = ("bestvideo[height>=720][height<=1080][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
+             "bestvideo[height>=720][height<=1080]+bestaudio/best[height>=720]")
 
-    if os.path.exists(output_path):
-        print(f"     ↩  Трейлер уже есть: {output_path}")
-        return output_path
 
-    print(f"  🎬  Скачиваем трейлер: {movie_title} ({year})")
+def _youtube_trailer_ids(movie_title: str, year: int) -> list[str]:
+    """Ищет на YouTube кандидатов-трейлеров, отфильтрованных по каналу/длине/названию."""
+    queries = [
+        f"{movie_title} {year} official trailer",
+        f"{movie_title} {year} trailer",
+        f"{movie_title} trailer {year}",
+    ]
+    title_words = {w for w in re.sub(r"[^a-z0-9 ]", "", movie_title.lower()).split() if len(w) > 2}
+    ids, seen = [], set()
+    for query in queries:
+        res = subprocess.run(
+            ["yt-dlp", f"ytsearch10:{query}", "--flat-playlist",
+             "--print", "%(id)s\t%(uploader)s\t%(duration)s\t%(title)s",
+             "--quiet", "--no-warnings"],
+            capture_output=True, text=True,
+        )
+        for line in res.stdout.strip().splitlines():
+            parts = line.split("\t")
+            if len(parts) < 4:
+                continue
+            vid, uploader, dur_str, vtitle = parts[0], parts[1], parts[2], parts[3].lower()
+            if vid in seen or re.search(YT_BLOCKED_UPLOADERS, uploader):
+                continue
+            try:
+                dur = float(dur_str)
+            except ValueError:
+                dur = 0
+            if dur and (dur < 60 or dur > 360):                     # трейлер: 1–6 минут
+                continue
+            vtitle_words = set(re.sub(r"[^a-z0-9 ]", "", vtitle).split())
+            if title_words and not title_words & vtitle_words:       # хотя бы слово из названия
+                continue
+            seen.add(vid)
+            ids.append(vid)
+        if ids:
+            break
+    return ids
+
+
+def _download_trailer_youtube(movie_title: str, year: int, output_path: str) -> str | None:
+    """Скачивает трейлер с YouTube в HD (yt-dlp + bgutil PO-token, анонимно, без cookies)."""
+    for vid in _youtube_trailer_ids(movie_title, year):
+        try:
+            subprocess.run(
+                ["yt-dlp", vid, "--format", YT_FORMAT, "--merge-output-format", "mp4",
+                 "--output", output_path, "--no-playlist", "--quiet", "--no-warnings"],
+                check=True,
+            )
+            if os.path.exists(output_path):
+                h = _get_video_height(output_path)
+                if h and h < 720:
+                    os.remove(output_path)
+                    continue
+                print(f"     ✓ Трейлер YouTube ({h}p): {output_path}")
+                return output_path
+        except subprocess.CalledProcessError:
+            if os.path.exists(output_path):
+                os.remove(output_path)
+    return None
+
+
+def _download_trailer_imdb(movie_title: str, year: int, output_path: str) -> str | None:
+    """Скачивает трейлер с IMDB (self-hosted) — fallback, когда YouTube не отдал HD."""
     try:
         tt = _imdb_find_title_id(movie_title, year)
         if not tt:
@@ -399,11 +459,25 @@ def download_trailer(movie_title: str, year: int, output_dir: str) -> str:
         print(f"     ✓ Трейлер IMDB ({height}p): {output_path}")
         return output_path
     except Exception as e:
-        print(f"     ✗ Ошибка загрузки трейлера: {e}")
+        print(f"     ✗ Ошибка IMDB: {e}")
         for p in (output_path, output_path + ".part"):
             if os.path.exists(p):
                 os.remove(p)
         return None
+
+
+def download_trailer(movie_title: str, year: int, output_dir: str) -> str:
+    """Каскад источников: YouTube HD (yt-dlp + bgutil, анонимно) → IMDB как fallback."""
+    safe_name = "".join(c for c in movie_title if c.isalnum() or c in " _-").strip().replace(" ", "_")
+    output_path = os.path.join(output_dir, f"{safe_name}_{year}_trailer.mp4")
+
+    if os.path.exists(output_path):
+        print(f"     ↩  Трейлер уже есть: {output_path}")
+        return output_path
+
+    print(f"  🎬  Скачиваем трейлер: {movie_title} ({year})")
+    return (_download_trailer_youtube(movie_title, year, output_path)
+            or _download_trailer_imdb(movie_title, year, output_path))
 
 
 def trim_trailer_intro(input_path: str, output_path: str, skip: int = TRAILER_SKIP_SECONDS) -> str:
