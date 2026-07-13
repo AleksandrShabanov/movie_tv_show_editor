@@ -1084,7 +1084,8 @@ def build_montage(
     Пропускает начало (логотипы/студии), конец (титры) и чёрные кадры.
     """
     n_clips = max(len(trailer_paths), int(total_duration / clip_dur))
-    clips_per = max(1, round(n_clips / len(trailer_paths)))
+    # ceil, чтобы скорее перебрать клипами, чем недобрать (иначе монтаж короче цели)
+    clips_per = max(1, math.ceil(n_clips / len(trailer_paths)))
 
     clip_files = []
     idx = 0
@@ -1147,6 +1148,9 @@ def build_montage(
 
     cmd = [
         "ffmpeg", "-y",
+        # зацикливаем набор клипов, чтобы монтаж всегда был точно нужной длины
+        # (доп. отрывки трейлеров вместо заморозки последнего кадра)
+        "-stream_loop", "-1",
         "-f", "concat", "-safe", "0", "-i", list_file,
         "-t", str(total_duration),
         *_venc(),
@@ -1536,12 +1540,16 @@ def _build_segment_impl(
                 if i < len(all_sc):
                     parts.append(all_sc[i])
         else:
-            # Нет стоп-кадров — весь трейлер
+            # Нет стоп-кадров — весь трейлер. Если трейлер короче нужного —
+            # зацикливаем его (доп. отрывки), чтобы не морозить последний кадр.
+            need = trailer_needed if trailer_needed > 0 else trailer_avail
+            loop_args = ["-stream_loop", "-1"] if trailer_avail < need else []
             trailer_cut = os.path.join(tmp_dir, f"seg{number}_trailer_cut.mp4")
             run_ffmpeg([
                 "ffmpeg", "-y",
+                *loop_args,
                 "-i", trimmed,
-                "-t", str(trailer_needed if trailer_needed > 0 else trailer_avail),
+                "-t", str(need),
                 "-vf", ("scale=1920:1080:force_original_aspect_ratio=decrease,"
                         f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,{TRAILER_FILM_GRAIN}"),
                 *_venc(),
