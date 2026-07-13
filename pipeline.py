@@ -646,7 +646,12 @@ def download_movie_stills(title: str, year: int, n: int, output_dir: str) -> lis
         timeout=10,
     )
     backdrops = r.json().get("backdrops", [])
-    backdrops.sort(key=lambda x: x.get("vote_average", 0), reverse=True)
+    # iso_639_1 == null → чистый кадр из фильма без надписей; язык (es/it/ru/fr…) →
+    # backdrop с впечатанным логотипом/названием на этом языке — такие в конец.
+    def _lang_rank(bd):
+        lang = bd.get("iso_639_1")
+        return 0 if lang is None else (1 if lang == "en" else 2)
+    backdrops.sort(key=lambda x: (_lang_rank(x), -x.get("vote_average", 0)))
 
     paths = []
     for i, bd in enumerate(backdrops[:n]):
