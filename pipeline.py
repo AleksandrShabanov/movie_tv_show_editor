@@ -566,31 +566,34 @@ def download_poster(movie_title: str, year: int, output_dir: str) -> str | None:
 
     # --- TMDB ---
     if TMDB_API_KEY:
-        match = _find_tmdb_movie(movie_title, year)
-        if match:
-            tmdb_id, media_type = match
-            img_r = requests.get(
-                f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/images",
-                params={"api_key": TMDB_API_KEY, "include_image_language": "en,null"},
-                timeout=10,
-            )
-            posters = img_r.json().get("posters", [])
-            posters.sort(key=lambda x: x.get("vote_average", 0), reverse=True)
-            poster_file_path = posters[0].get("file_path") if posters else None
-            if not poster_file_path:
-                detail = requests.get(
-                    f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}",
-                    params={"api_key": TMDB_API_KEY, "language": "en-US"},
+        try:
+            match = _find_tmdb_movie(movie_title, year)
+            if match:
+                tmdb_id, media_type = match
+                img_r = requests.get(
+                    f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/images",
+                    params={"api_key": TMDB_API_KEY, "include_image_language": "en,null"},
                     timeout=10,
-                ).json()
-                poster_file_path = detail.get("poster_path")
-            if poster_file_path:
-                img = requests.get(f"https://image.tmdb.org/t/p/w780{poster_file_path}", timeout=10)
-                if img.status_code == 200 and len(img.content) > 10000:
-                    with open(poster_path, "wb") as f:
-                        f.write(img.content)
-                    print(f"     ✓ Постер (TMDB): {poster_path}")
-                    return poster_path
+                )
+                posters = img_r.json().get("posters", [])
+                posters.sort(key=lambda x: x.get("vote_average", 0), reverse=True)
+                poster_file_path = posters[0].get("file_path") if posters else None
+                if not poster_file_path:
+                    detail = requests.get(
+                        f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}",
+                        params={"api_key": TMDB_API_KEY, "language": "en-US"},
+                        timeout=10,
+                    ).json()
+                    poster_file_path = detail.get("poster_path")
+                if poster_file_path:
+                    img = requests.get(f"https://image.tmdb.org/t/p/w780{poster_file_path}", timeout=10)
+                    if img.status_code == 200 and len(img.content) > 10000:
+                        with open(poster_path, "wb") as f:
+                            f.write(img.content)
+                        print(f"     ✓ Постер (TMDB): {poster_path}")
+                        return poster_path
+        except Exception as e:
+            print(f"     ⚠  TMDB ошибка постера: {e}")
 
     # --- OMDB фолбэк: movie и series ---
     if OMDB_API_KEY:
@@ -640,12 +643,16 @@ def download_movie_stills(title: str, year: int, n: int, output_dir: str) -> lis
         return []
     movie_id, media_type = match
 
-    r = requests.get(
-        f"https://api.themoviedb.org/3/{media_type}/{movie_id}/images",
-        params={"api_key": TMDB_API_KEY},
-        timeout=10,
-    )
-    backdrops = r.json().get("backdrops", [])
+    try:
+        r = requests.get(
+            f"https://api.themoviedb.org/3/{media_type}/{movie_id}/images",
+            params={"api_key": TMDB_API_KEY},
+            timeout=10,
+        )
+        backdrops = r.json().get("backdrops", [])
+    except Exception as e:
+        print(f"     ⚠  TMDB ошибка кадров: {e}")
+        return []
     # iso_639_1 == null → чистый кадр из фильма без надписей; язык (es/it/ru/fr…) →
     # backdrop с впечатанным логотипом/названием на этом языке — такие в конец.
     def _lang_rank(bd):
