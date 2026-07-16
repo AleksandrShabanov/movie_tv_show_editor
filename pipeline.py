@@ -505,6 +505,26 @@ def trim_trailer_intro(input_path: str, output_path: str, skip: int = TRAILER_SK
 # 3. ВСПОМОГАТЕЛЬНЫЙ ПОИСК TMDB
 # ─────────────────────────────────────────────
 
+TMDB_RETRIES = 3
+TMDB_BACKOFF = 1.5
+
+
+def _tmdb_get(url: str, params: dict | None = None, timeout: int = 15) -> requests.Response:
+    """GET к TMDB (API или image CDN) с ретраями и экспоненциальным backoff —
+    TMDB периодически отдаёт Read timeout, из-за чего пропадали постеры/кадры."""
+    last = None
+    for attempt in range(TMDB_RETRIES):
+        try:
+            r = requests.get(url, params=params, timeout=timeout)
+            r.raise_for_status()
+            return r
+        except Exception as e:
+            last = e
+            if attempt < TMDB_RETRIES - 1:
+                time.sleep(TMDB_BACKOFF * (2 ** attempt))
+    raise last
+
+
 def _find_tmdb_movie(title: str, year: int) -> tuple[int, str] | None:
     """Ищет фильм/сериал в TMDB с проверкой года и схожести названия.
     Возвращает (tmdb_id, media_type) или None.
@@ -542,7 +562,7 @@ def _find_tmdb_movie(title: str, year: int) -> tuple[int, str] | None:
     ]
     for url, params, media_type, strict_year in searches:
         try:
-            r = requests.get(url, params=params, timeout=10)
+            r = _tmdb_get(url, params=params)
             results = r.json().get("results", [])
             match = _best_match(results, media_type, strict_year)
             if match:
@@ -570,23 +590,21 @@ def download_poster(movie_title: str, year: int, output_dir: str) -> str | None:
             match = _find_tmdb_movie(movie_title, year)
             if match:
                 tmdb_id, media_type = match
-                img_r = requests.get(
+                img_r = _tmdb_get(
                     f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/images",
                     params={"api_key": TMDB_API_KEY, "include_image_language": "en,null"},
-                    timeout=10,
                 )
                 posters = img_r.json().get("posters", [])
                 posters.sort(key=lambda x: x.get("vote_average", 0), reverse=True)
                 poster_file_path = posters[0].get("file_path") if posters else None
                 if not poster_file_path:
-                    detail = requests.get(
+                    detail = _tmdb_get(
                         f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}",
                         params={"api_key": TMDB_API_KEY, "language": "en-US"},
-                        timeout=10,
                     ).json()
                     poster_file_path = detail.get("poster_path")
                 if poster_file_path:
-                    img = requests.get(f"https://image.tmdb.org/t/p/w780{poster_file_path}", timeout=10)
+                    img = _tmdb_get(f"https://image.tmdb.org/t/p/w780{poster_file_path}")
                     if img.status_code == 200 and len(img.content) > 10000:
                         with open(poster_path, "wb") as f:
                             f.write(img.content)
@@ -644,10 +662,9 @@ def download_movie_stills(title: str, year: int, n: int, output_dir: str) -> lis
     movie_id, media_type = match
 
     try:
-        r = requests.get(
+        r = _tmdb_get(
             f"https://api.themoviedb.org/3/{media_type}/{movie_id}/images",
             params={"api_key": TMDB_API_KEY},
-            timeout=10,
         )
         backdrops = r.json().get("backdrops", [])
     except Exception as e:
@@ -667,8 +684,8 @@ def download_movie_stills(title: str, year: int, n: int, output_dir: str) -> lis
             continue
         out = os.path.join(output_dir, f"{safe}_still_{i+1}.jpg")
         try:
-            img = requests.get(f"https://image.tmdb.org/t/p/w1280{fp}", timeout=15)
-            if img.status_code == 200 and len(img.content) > 5000:
+            img = _tmdb_get(f"https://image.tmdb.org/t/p/w1280{fp}")
+            if len(img.content) > 5000:
                 with open(out, "wb") as f:
                     f.write(img.content)
                 paths.append(out)
@@ -757,10 +774,9 @@ def fetch_movie_people(title: str, year: int, n_cast: int = N_CAST_PHOTOS) -> li
         if not match:
             return []
         movie_id, media_type = match
-        r = requests.get(
+        r = _tmdb_get(
             f"https://api.themoviedb.org/3/{media_type}/{movie_id}/credits",
             params={"api_key": TMDB_API_KEY},
-            timeout=10,
         )
         credits = r.json()
     except Exception as e:
@@ -793,8 +809,8 @@ def download_person_photo(name: str, profile_path: str, output_dir: str) -> str 
     if os.path.exists(out_path):
         return out_path
     try:
-        r = requests.get(f"https://image.tmdb.org/t/p/w500{profile_path}", timeout=15)
-        if r.status_code == 200 and len(r.content) > 5000:
+        r = _tmdb_get(f"https://image.tmdb.org/t/p/w500{profile_path}")
+        if len(r.content) > 5000:
             with open(out_path, "wb") as f:
                 f.write(r.content)
             print(f"     ✓ Фото: {name}")
@@ -809,10 +825,9 @@ def search_person_photo(name: str, output_dir: str) -> str | None:
     if not TMDB_API_KEY:
         return None
     try:
-        r = requests.get(
+        r = _tmdb_get(
             "https://api.themoviedb.org/3/search/person",
             params={"api_key": TMDB_API_KEY, "query": name},
-            timeout=10,
         )
         for result in r.json().get("results", [])[:3]:
             if result.get("profile_path"):
