@@ -413,25 +413,39 @@ def _youtube_trailer_ids(movie_title: str, year: int) -> list[str]:
     return ids
 
 
+def _clean_partial(output_path: str):
+    """Удаляет незавершённые файлы yt-dlp (output.mp4, output.fNNN.mp4.part и т.п.)."""
+    import glob
+    stem = os.path.splitext(output_path)[0]
+    for p in [output_path, *glob.glob(f"{stem}.f*"), *glob.glob(f"{output_path}*.part")]:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
+
 def _download_trailer_youtube(movie_title: str, year: int, output_path: str) -> str | None:
     """Скачивает трейлер с YouTube в HD (yt-dlp + bgutil PO-token, анонимно, без cookies)."""
     for vid in _youtube_trailer_ids(movie_title, year):
         try:
             subprocess.run(
                 ["yt-dlp", vid, "--format", YT_FORMAT, "--merge-output-format", "mp4",
-                 "--output", output_path, "--no-playlist", "--quiet", "--no-warnings"],
+                 "--output", output_path, "--no-playlist", "--quiet", "--no-warnings",
+                 # устойчивость к транзитным обрывам загрузки (иначе единственный
+                 # HD-кандидат мог провалиться на середине и трейлер терялся)
+                 "--retries", "5", "--fragment-retries", "10",
+                 "--retry-sleep", "3", "--socket-timeout", "30"],
                 check=True,
             )
             if os.path.exists(output_path):
                 h = _get_video_height(output_path)
                 if h and h < 720:
-                    os.remove(output_path)
+                    _clean_partial(output_path)
                     continue
                 print(f"     ✓ Трейлер YouTube ({h}p): {output_path}")
                 return output_path
         except subprocess.CalledProcessError:
-            if os.path.exists(output_path):
-                os.remove(output_path)
+            _clean_partial(output_path)
     return None
 
 
