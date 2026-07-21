@@ -540,49 +540,66 @@ def _tmdb_get(url: str, params: dict | None = None, timeout: int = 15) -> reques
 
 
 def _find_tmdb_movie(title: str, year: int) -> tuple[int, str] | None:
-    """Ищет фильм/сериал в TMDB с проверкой года и схожести названия.
+    """Ищет фильм/сериал в TMDB. Год — сильный сигнал: результат с точным годом
+    из поиска по названию принимается, даже если у TMDB другое основное название
+    (напр. «Hungry Wives» для «Season of the Witch» 1972). Иначе легко подцепить
+    одноимённый фильм другого года (напр. версию 2011 с Кейджем).
     Возвращает (tmdb_id, media_type) или None.
     """
     import difflib
     if not TMDB_API_KEY:
         return None
 
-    def _year_of(result: dict, media_type: str) -> int | None:
-        date = result.get("release_date") or result.get("first_air_date") or ""
+    def _year_of(res: dict) -> int | None:
+        date = res.get("release_date") or res.get("first_air_date") or ""
         try:
             return int(date[:4])
         except (ValueError, TypeError):
             return None
 
-    def _best_match(results: list, media_type: str, strict_year: bool) -> tuple[int, str] | None:
-        best_id, best_ratio = None, 0.0
+    searches = [
+        ("https://api.themoviedb.org/3/search/movie", {"api_key": TMDB_API_KEY, "query": title, "year": year, "language": "en-US"}, "movie"),
+        ("https://api.themoviedb.org/3/search/tv",    {"api_key": TMDB_API_KEY, "query": title, "first_air_date_year": year, "language": "en-US"}, "tv"),
+        ("https://api.themoviedb.org/3/search/movie", {"api_key": TMDB_API_KEY, "query": title, "language": "en-US"}, "movie"),
+        ("https://api.themoviedb.org/3/search/tv",    {"api_key": TMDB_API_KEY, "query": title, "language": "en-US"}, "tv"),
+    ]
+    cands = []  # (id, media_type, ratio, year)
+    seen = set()
+    for url, params, media_type in searches:
+        try:
+            results = _tmdb_get(url, params=params).json().get("results", [])
+        except Exception:
+            continue
         for res in results[:5]:
+            key = (media_type, res.get("id"))
+            if res.get("id") is None or key in seen:
+                continue
+            seen.add(key)
             ratio = difflib.SequenceMatcher(
                 None, title.lower(), (res.get("title") or res.get("name") or "").lower()
             ).ratio()
-            res_year = _year_of(res, media_type)
-            if strict_year and res_year and abs(res_year - year) > 1:
-                continue
-            if ratio > best_ratio:
-                best_ratio, best_id = ratio, res.get("id")
-        threshold = 0.5 if strict_year else 0.75
-        return (best_id, media_type) if best_id and best_ratio >= threshold else None
+            cands.append((res["id"], media_type, ratio, _year_of(res)))
 
-    searches = [
-        ("https://api.themoviedb.org/3/search/movie", {"api_key": TMDB_API_KEY, "query": title, "year": year, "language": "en-US"}, "movie", True),
-        ("https://api.themoviedb.org/3/search/tv",    {"api_key": TMDB_API_KEY, "query": title, "first_air_date_year": year, "language": "en-US"}, "tv", True),
-        ("https://api.themoviedb.org/3/search/movie", {"api_key": TMDB_API_KEY, "query": title, "language": "en-US"}, "movie", False),
-        ("https://api.themoviedb.org/3/search/tv",    {"api_key": TMDB_API_KEY, "query": title, "language": "en-US"}, "tv", False),
+    def ynear(c, d): return c[3] is not None and abs(c[3] - year) <= d
+    # Тиры от сильного к слабому. Точное название + близкий год идёт раньше, чем
+    # просто год-совпадение, — иначе одноимённый импостор того же года побьёт
+    # правильный фильм, у которого TMDB-год отличается на единицу (The Witch 2015→
+    # TMDB 2016). А чисто год-совпадение (без учёта названия) ловит фильмы под
+    # алиасом (Season of the Witch 1972 → «Hungry Wives»).
+    tiers = [
+        lambda c: c[2] >= 0.9 and c[3] == year,       # точное название + точный год
+        lambda c: c[2] >= 0.9 and ynear(c, 1),        # точное название + ±1 год (The Witch 2015→2016)
+        lambda c: c[3] == year,                       # точный год под алиасом (Season→Hungry Wives 1972)
+        lambda c: c[2] >= 0.9 and ynear(c, 2),        # точное название, ±2 года
+        lambda c: ynear(c, 1),                        # ±1 год
+        lambda c: c[2] >= 0.7 and ynear(c, 3),        # похожее название, близкий год
+        lambda c: c[2] >= 0.85,                        # почти точное название, любой год
     ]
-    for url, params, media_type, strict_year in searches:
-        try:
-            r = _tmdb_get(url, params=params)
-            results = r.json().get("results", [])
-            match = _best_match(results, media_type, strict_year)
-            if match:
-                return match
-        except Exception:
-            continue
+    for match in tiers:
+        picked = [c for c in cands if match(c)]
+        if picked:
+            best = max(picked, key=lambda c: c[2])    # среди подходящих — лучшее название
+            return (best[0], best[1])
     return None
 
 
