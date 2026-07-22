@@ -70,10 +70,12 @@ def _venc(pix_fmt: bool = True) -> list[str]:
 # ─────────────────────────────────────────────
 # КОНФИГ — ключи читаются из .env
 # ─────────────────────────────────────────────
-VOICER_API_KEY = os.getenv("VOICER_API_KEY")
+LUMEAN_API_KEY = os.getenv("LUMEAN_API_KEY")
 TMDB_API_KEY   = os.getenv("TMDB_API_KEY")
 OMDB_API_KEY   = os.getenv("OMDB_API_KEY")
-VOICER_BASE    = "https://voiceapiru.csv666.ru"
+LUMEAN_BASE    = "https://api.lumean.app/api/public"
+# Необязательно: заранее созданный template — если задан, шаг создания пропускается
+LUMEAN_TEMPLATE_ID = os.getenv("LUMEAN_TEMPLATE_ID")
 
 # Голос по умолчанию (ElevenLabs voice_id)
 DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"
@@ -118,81 +120,98 @@ TRAILER_FILM_GRAIN = "noise=alls=12:allf=t,unsharp=3:3:0.4"
 # 1. ВОРКФЛОУ ВОЙСОВЕРА
 # ─────────────────────────────────────────────
 
-def generate_voiceover(text: str, output_path: str, voice_id: str = DEFAULT_VOICE_ID) -> str:
-    """Отправляет текст в VoicerAPI, ждёт готовности, скачивает MP3."""
-    print(f"  🎙  Генерация войсовера ({len(text)} символов)...")
+# Кэш template_id по voice_id (создаём один раз за процесс)
+_lumean_templates: dict[str, str] = {}
 
-    headers = {"X-API-Key": VOICER_API_KEY, "Content-Type": "application/json"}
-    payload = {
-        "text": text,
-        "template": {
-            "model_id": "eleven_multilingual_v2",
-            "voice_id": voice_id,
-            "voice_settings": {"stability": 0.85, "similarity_boost": 0.75, "speed": 1.0}
-        }
-    }
 
-    # Retry при 429 (rate limit): до 20 попыток, пауза растёт но не больше 10 мин
-    for attempt in range(20):
-        r = requests.post(f"{VOICER_BASE}/tasks", json=payload, headers=headers)
+def _lumean_request(method: str, path: str, json_body: dict | None = None, retries: int = 20) -> dict:
+    """Запрос к Lumean API с ретраями на 429 и сетевые сбои. Возвращает JSON."""
+    url = f"{LUMEAN_BASE}{path}"
+    headers = {"X-API-KEY": LUMEAN_API_KEY, "Content-Type": "application/json"}
+    for attempt in range(retries):
+        try:
+            r = requests.request(method, url, headers=headers, json=json_body, timeout=30)
+        except Exception:
+            time.sleep(min(5 * (2 ** attempt), 120))
+            continue
         if r.status_code == 429:
-            wait = min(30 * (2 ** attempt), 600)
-            print(f"     ⏳ Rate limit (429), попытка {attempt+1}/20, ждём {wait}s...")
+            ra = r.headers.get("Retry-After", "")
+            wait = int(ra) if ra.isdigit() else min(30 * (2 ** attempt), 600)
+            print(f"     ⏳ Rate limit (429), попытка {attempt+1}/{retries}, ждём {wait}s...")
             time.sleep(wait)
             continue
         r.raise_for_status()
-        break
-    else:
-        raise RuntimeError("VoicerAPI: превышен лимит запросов после 20 попыток")
+        return r.json()
+    raise RuntimeError(f"Lumean: {method} {path} не удался после {retries} попыток")
 
-    task_id = r.json()["task_id"]
-    print(f"     Task ID: {task_id} — ожидаем...")
 
-    # Поллинг статуса — до 60 минут, с повторной отправкой после 20 мин зависания
+def _lumean_template_id(voice_id: str) -> str:
+    """Возвращает template_id для голоса (создаёт один раз и кэширует).
+    Если задан LUMEAN_TEMPLATE_ID — используется он (шаг создания пропускается)."""
+    if LUMEAN_TEMPLATE_ID:
+        return LUMEAN_TEMPLATE_ID
+    if voice_id in _lumean_templates:
+        return _lumean_templates[voice_id]
+    body = {
+        "service_key": "elevenlabs",
+        "name": f"movie-editor {voice_id}",
+        "config": {"tts_settings": {
+            "mode": "mode_v1",
+            "model_id": "eleven_multilingual_v2",
+            "voice_id": voice_id,
+            "voice_settings": {
+                "stability": 0.9, "similarity_boost": 0.75,
+                "use_speaker_boost": True, "speed": 1.0,
+            },
+        }},
+    }
+    tid = _lumean_request("POST", "/templates", body)["data"]["id"]
+    _lumean_templates[voice_id] = tid
+    return tid
+
+
+def generate_voiceover(text: str, output_path: str, voice_id: str = DEFAULT_VOICE_ID) -> str:
+    """Генерирует войсовер через Lumean: template → order → polling → download."""
+    print(f"  🎙  Генерация войсовера ({len(text)} символов)...")
+
+    template_id = _lumean_template_id(voice_id)
+    order = _lumean_request("POST", "/orders",
+                            {"template_id": template_id, "input_text": text})["data"]
+    order_id = order["id"]
+    print(f"     Order ID: {order_id} — ожидаем...")
+
+    TERMINAL_OK  = {"completed", "result_delivered"}
+    TERMINAL_BAD = {"failed", "cancelled", "compensated"}
+
+    files = None
     last_status = None
-    for attempt_round in range(3):  # до 3 попыток по 20 мин
-        for i in range(400):  # 400 × 3s = 20 мин
-            time.sleep(3)
-            try:
-                s = requests.get(f"{VOICER_BASE}/tasks/{task_id}/status", headers=headers, timeout=15)
-                data = s.json()
-            except Exception:
-                continue
-            status = data.get("status", "")
-            if status != last_status:
-                print(f"     Статус: {status} | raw: {data}")
-                last_status = status
-            if status in ("ending", "done", "completed", "finished", "success"):
-                break
-            elif status in ("error", "error_handled"):
-                raise RuntimeError(f"Ошибка генерации войсовера: {data}")
-        else:
-            # 20 мин истекли — переотправляем задачу
-            print(f"     ⏳ Задача зависла, переотправляем (попытка {attempt_round+2}/3)...")
-            for attempt in range(20):
-                r = requests.post(f"{VOICER_BASE}/tasks", json=payload, headers=headers)
-                if r.status_code == 429:
-                    wait = min(30 * (2 ** attempt), 600)
-                    time.sleep(wait)
-                    continue
-                r.raise_for_status()
-                break
-            resp_data = r.json()
-            if "task_id" not in resp_data:
-                raise RuntimeError(f"VoicerAPI: нет task_id в ответе: {resp_data}")
-            task_id = resp_data["task_id"]
-            print(f"     Новый Task ID: {task_id} — ожидаем...")
-            last_status = None
+    for _ in range(1200):  # 1200 × 3s ≈ 60 мин
+        time.sleep(3)
+        try:
+            data = _lumean_request("GET", f"/orders/{order_id}", retries=5)["data"]
+        except Exception:
             continue
-        break
+        status = data.get("status", "")
+        if status != last_status:
+            print(f"     Статус: {status}")
+            last_status = status
+        if status in TERMINAL_OK:
+            result = data.get("result") or {}
+            files = result.get("files") or data.get("files") or []
+            if not files:
+                raise RuntimeError(f"Lumean: заказ завершён, но нет файлов: {data}")
+            break
+        if status in TERMINAL_BAD:
+            raise RuntimeError(f"Lumean: заказ провален ({status}): {data}")
     else:
         raise TimeoutError("Войсовер не готов за 60 минут")
 
-    # Скачиваем результат
-    res = requests.get(f"{VOICER_BASE}/tasks/{task_id}/result", headers=headers)
-    res.raise_for_status()
+    # Ссылка на скачивание временная — получаем через /storage/url
+    dl_url = _lumean_request("POST", "/storage/url", {"path": files[0]})["data"]["url"]
+    audio = requests.get(dl_url, timeout=120)
+    audio.raise_for_status()
     with open(output_path, "wb") as f:
-        f.write(res.content)
+        f.write(audio.content)
     print(f"     ✓ Войсовер сохранён: {output_path}")
     return output_path
 
