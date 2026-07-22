@@ -78,7 +78,8 @@ LUMEAN_BASE    = "https://api.lumean.app/api/public"
 LUMEAN_TEMPLATE_ID = os.getenv("LUMEAN_TEMPLATE_ID")
 
 # Голос по умолчанию (ElevenLabs voice_id)
-DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"
+# DEFAULT_VOICE_ID = "iP95p4xoKVk53GoZ742B"  # старый голос — оставлен на всякий случай
+DEFAULT_VOICE_ID = "JZ3e95uoTACVf6tXaaEi"    # новый голос
 
 # Сколько секунд пропускать в начале трейлера (MPAA + студия)
 TRAILER_SKIP_SECONDS = 15
@@ -1834,7 +1835,9 @@ def main():
         data = json.load(f)
 
     movies   = data["movies"]
-    voice_id = data.get("voice_id", DEFAULT_VOICE_ID)
+    # Голос управляется централизованно в коде (DEFAULT_VOICE_ID);
+    # поле voice_id в JSON игнорируется.
+    voice_id = DEFAULT_VOICE_ID
 
     # По умолчанию имя вывода и воркдир выводятся из имени входного JSON,
     # чтобы разные сборки не затирали друг друга (общий final.mp4).
