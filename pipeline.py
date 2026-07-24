@@ -161,7 +161,8 @@ def _lumean_template_id(voice_id: str) -> str:
             "model_id": "eleven_multilingual_v2",
             "voice_id": voice_id,
             "voice_settings": {
-                "stability": 0.9, "similarity_boost": 0.75,
+                # Максимальная ровность: голос иногда «проседал» ниже по тону.
+                "stability": 1.0, "similarity_boost": 0.85,
                 "use_speaker_boost": True, "speed": 1.0,
             },
         }},
