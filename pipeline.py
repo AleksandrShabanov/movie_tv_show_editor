@@ -396,7 +396,7 @@ def _imdb_best_trailer(tt: str) -> tuple[str, int] | None:
 
 
 # Каналы-агрегаторы с водяными знаками — исключаем из поиска на YouTube
-YT_BLOCKED_UPLOADERS = r"(?i)(movieclips|fandango|clipsandtrailers)"
+YT_BLOCKED_UPLOADERS = r"(?i)(movieclips|fandango|clipsandtrailers|kinocheck)"
 # Формат: HD h264 ≤1080p (avc1 — для совместимости с ffmpeg), затем любой ≥720p
 YT_FORMAT = ("bestvideo[height>=720][height<=1080][vcodec^=avc1]+bestaudio[acodec^=mp4a]/"
              "bestvideo[height>=720][height<=1080]+bestaudio/best[height>=720]")
