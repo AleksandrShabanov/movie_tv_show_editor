@@ -57,11 +57,16 @@ _HW_ENCODER = _detect_hw_encoder()
 
 
 def _venc(pix_fmt: bool = True) -> list[str]:
-    """Возвращает ffmpeg-аргументы кодировщика: GPU (VideoToolbox) или CPU ultrafast."""
+    """Возвращает ffmpeg-аргументы кодировщика: GPU (VideoToolbox) или CPU x264.
+    Пайплайн гоняет видео через много последовательных перекодировок (обрезка,
+    фильтры, оверлеи) — на -q:v 50 (VideoToolbox) это накопительно размывало
+    картинку, особенно заметно на больших ТВ-экранах. Явный битрейт с запасом
+    даёт кодировщику стабильный бюджет бит на каждом проходе."""
     if _HW_ENCODER == "h264_videotoolbox":
-        args = ["-c:v", "h264_videotoolbox", "-q:v", "50", "-allow_sw", "1"]
+        args = ["-c:v", "h264_videotoolbox", "-b:v", "10M", "-maxrate", "14M",
+                 "-bufsize", "20M", "-allow_sw", "1"]
     else:
-        args = ["-c:v", "libx264", "-preset", "ultrafast"]
+        args = ["-c:v", "libx264", "-preset", "medium", "-crf", "16"]
     if pix_fmt:
         args += ["-pix_fmt", "yuv420p"]
     return args
@@ -114,8 +119,10 @@ TEXT_COLOR  = "white"
 FONT_PATH   = "/System/Library/Fonts/Supplemental/Impact.ttf"  # Mac
 # FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"  # Linux
 
-# Фильтр "старой плёнки" на трейлерные куски (снижает уверенность Content ID)
-TRAILER_FILM_GRAIN = "noise=alls=12:allf=t,unsharp=3:3:0.4"
+# Фильтр на трейлерные куски. Раньше добавлял шум+резкость для маскировки от
+# Content ID — сознательно убран ради качества картинки на ТВ (риск claim'ов
+# принят). Пусто = никакой доп. обработки трейлерных кусков.
+TRAILER_FILM_GRAIN = ""
 
 # ─────────────────────────────────────────────
 # 1. ВОРКФЛОУ ВОЙСОВЕРА
@@ -395,6 +402,18 @@ YT_FORMAT = ("bestvideo[height>=720][height<=1080][vcodec^=avc1]+bestaudio[acode
              "bestvideo[height>=720][height<=1080]+bestaudio/best[height>=720]")
 
 
+# Ролики-разборы/реакции/новости проходили фильтр по названию (например,
+# "100 Tears Review" или "Terrifier 2 ... Release Date Confirmed" содержат
+# слова из названия фильма не хуже настоящего трейлера), поэтому их нужно
+# отсеивать по типу контента отдельно, а не только по названию.
+YT_NON_TRAILER_TITLE = (
+    r"(?i)\b(reviews?|reactions?|react(s|ing)?|rants?|recaps?|breakdowns?|"
+    r"explained|analysis|commentary|podcast|interviews?|ending explained|"
+    r"first look|release date|coming (soon|this week)|confirmed|top \d+|"
+    r"deleted scene|behind the scenes)\b"
+)
+
+
 def _youtube_trailer_ids(movie_title: str, year: int) -> list[str]:
     """Ищет на YouTube кандидатов-трейлеров, отфильтрованных по каналу/длине/названию."""
     queries = [
@@ -418,6 +437,8 @@ def _youtube_trailer_ids(movie_title: str, year: int) -> list[str]:
             vid, uploader, dur_str, vtitle = parts[0], parts[1], parts[2], parts[3].lower()
             if vid in seen or re.search(YT_BLOCKED_UPLOADERS, uploader):
                 continue
+            if re.search(YT_NON_TRAILER_TITLE, vtitle):
+                continue
             try:
                 dur = float(dur_str)
             except ValueError:
@@ -425,7 +446,9 @@ def _youtube_trailer_ids(movie_title: str, year: int) -> list[str]:
             if dur and (dur < 60 or dur > 360):                     # трейлер: 1–6 минут
                 continue
             vtitle_words = set(re.sub(r"[^a-z0-9 ]", "", vtitle).split())
-            if title_words and not title_words & vtitle_words:       # хотя бы слово из названия
+            # Все значимые слова названия должны быть в видео — не просто одно
+            # общее слово, иначе "100 Tears" ловит "100 Years" на слове "100".
+            if title_words and not title_words <= vtitle_words:
                 continue
             seen.add(vid)
             ids.append(vid)
@@ -1331,7 +1354,8 @@ def _build_segment_impl(
                 chunk_dur = trailer_avail / n_chunks
 
             vf = ("scale=1920:1080:force_original_aspect_ratio=decrease,"
-                  f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,{TRAILER_FILM_GRAIN}")
+                  "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
+                  + (f",{TRAILER_FILM_GRAIN}" if TRAILER_FILM_GRAIN else ""))
             for i in range(n_chunks):
                 chunk_path = os.path.join(tmp_dir, f"seg{number}_tchunk_{i}.mp4")
                 run_ffmpeg([
@@ -1357,7 +1381,8 @@ def _build_segment_impl(
                 "-i", trimmed,
                 "-t", str(need),
                 "-vf", ("scale=1920:1080:force_original_aspect_ratio=decrease,"
-                        f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,{TRAILER_FILM_GRAIN}"),
+                        "pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1"
+                        + (f",{TRAILER_FILM_GRAIN}" if TRAILER_FILM_GRAIN else "")),
                 *_venc(),
                 "-r", "30", "-an", trailer_cut,
             ])
