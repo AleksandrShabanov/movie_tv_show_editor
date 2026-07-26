@@ -1461,32 +1461,85 @@ def _build_segment_impl(
 # 6. ФИНАЛЬНАЯ СБОРКА
 # ─────────────────────────────────────────────
 
+def _build_burn_transition(output_path: str, work_dir: str) -> str:
+    """Создаёт короткий переход «прогорание плёнки»: искра в углу кадра →
+    раскалённое бело-оранжевое пятно расползается, тая в тёмно-красный по
+    краю → вспышка почти в белое → чёрное. Используется вместо простой
+    чёрной паузы после интро, между фильмами и перед аутро."""
+    import shutil
+    tmp_dir = os.path.join(work_dir, "burn_tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    cx, cy = 1382, 302  # точка возгорания — верхний правый квадрант кадра
+    radial = f"1-hypot(X-{cx},Y-{cy})/max((2400*pow(clip((T-0.12)/0.5,0,1),0.6)),1)"
+
+    bloom = os.path.join(tmp_dir, "bloom.mp4")
+    run_ffmpeg([
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "color=black:s=1920x1080:r=30:d=0.5",
+        "-vf", (
+            f"geq=r='255*clip(({radial})*1.4,0,1)':"
+            f"g='255*clip(({radial}-0.12)*1.25,0,1)':"
+            f"b='255*clip(({radial}-0.55)*2.2,0,1)',"
+            "noise=alls=14:allf=t+u,eq=brightness=0.02*sin(2*PI*t*23)"
+        ),
+        *_venc(), "-an", bloom,
+    ])
+
+    flash = os.path.join(tmp_dir, "flash.mp4")
+    run_ffmpeg([
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "color=0xFFF3C4:s=1920x1080:r=30:d=0.1",
+        "-vf", "noise=alls=20:allf=t+u,eq=brightness=0.05*sin(2*PI*t*40)",
+        *_venc(), "-an", flash,
+    ])
+
+    black = os.path.join(tmp_dir, "black.mp4")
+    run_ffmpeg([
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "color=black:s=1920x1080:r=30:d=0.15",
+        *_venc(), "-an", black,
+    ])
+
+    video_only = os.path.join(tmp_dir, "burn_video.mp4")
+    _concat_video_parts([bloom, flash, black], video_only)
+
+    duration = get_audio_duration(video_only)
+    run_ffmpeg([
+        "ffmpeg", "-y",
+        "-i", video_only,
+        "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+        "-t", f"{duration:.3f}",
+        *_venc(),
+        "-c:a", "aac", "-b:a", "192k",
+        output_path,
+    ])
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    return output_path
+
+
 def assemble_final(segments: list[str], output_path: str, work_dir: str) -> str:
-    """Склеивает все сегменты в финальное видео с паузой 0.5s между фильмами."""
+    """Склеивает все сегменты в финальное видео с переходом «прогорание
+    плёнки» после интро, между фильмами и перед аутро."""
     print(f"\n🎞  Финальная сборка ({len(segments)} сегментов)...")
 
-    # Генерируем чёрную паузу между сегментами (один раз)
-    pause_path = os.path.join(work_dir, "pause.mp4")
-    if not os.path.exists(pause_path):
-        run_ffmpeg([
-            "ffmpeg", "-y",
-            "-f", "lavfi", "-i", "color=c=black:s=1920x1080:r=30:d=0.5",
-            "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
-            "-t", "0.5",
-            *_venc(),
-            "-c:a", "aac", "-b:a", "192k",
-            pause_path,
-        ])
+    # Генерируем переход один раз, переиспользуем во всех точках склейки
+    burn_path = os.path.join(work_dir, "burn_transition.mp4")
+    if not os.path.exists(burn_path):
+        print("     → Генерация перехода (прогорание плёнки)...")
+        _build_burn_transition(burn_path, work_dir)
 
-    # Интро → фильм1 → пауза → фильм2 → пауза → … → фильм20 → аутро
+    # Интро → переход → фильм1 → переход → фильм2 → … → фильмN → переход → аутро
     intro, *movies, outro = segments
     list_file = os.path.join(work_dir, "final_list.txt")
     with open(list_file, "w") as f:
         f.write(f"file '{os.path.abspath(intro)}'\n")
+        f.write(f"file '{os.path.abspath(burn_path)}'\n")
         for i, s in enumerate(movies):
             if i > 0:
-                f.write(f"file '{os.path.abspath(pause_path)}'\n")
+                f.write(f"file '{os.path.abspath(burn_path)}'\n")
             f.write(f"file '{os.path.abspath(s)}'\n")
+        f.write(f"file '{os.path.abspath(burn_path)}'\n")
         f.write(f"file '{os.path.abspath(outro)}'\n")
 
     cmd = [
