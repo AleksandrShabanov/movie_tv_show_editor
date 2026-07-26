@@ -1461,6 +1461,66 @@ def _build_segment_impl(
 # 6. ФИНАЛЬНАЯ СБОРКА
 # ─────────────────────────────────────────────
 
+def _build_vhs_glitch_transition(output_path: str, work_dir: str) -> str:
+    """Создаёт короткий переход «VHS-глитч»: резкий скачок в цветные
+    телепомехи с цветными полосами рассинхрона и хроматическим сдвигом,
+    лёгкое вертикальное дрожание (сбой трекинга) → короткий шумный хвост →
+    чёрное. Альтернатива _build_burn_transition."""
+    import shutil
+    tmp_dir = os.path.join(work_dir, "vhs_tmp")
+    os.makedirs(tmp_dir, exist_ok=True)
+
+    glitch = os.path.join(tmp_dir, "glitch.mp4")
+    run_ffmpeg([
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "color=gray:s=1920x1160:r=30:d=0.45",
+        "-vf", (
+            "noise=alls=60:allf=t+u,"
+            "drawbox=x=0:y=180:w=1920:h=50:color=cyan@0.8:t=fill:"
+            "enable='lt(mod(t*7\\,1),0.3)',"
+            "drawbox=x=0:y=560:w=1920:h=35:color=magenta@0.8:t=fill:"
+            "enable='lt(mod(t*5+0.4\\,1),0.25)',"
+            "drawbox=x=0:y=870:w=1920:h=60:color=0x33FF66@0.7:t=fill:"
+            "enable='lt(mod(t*9+0.15\\,1),0.2)',"
+            "geq=lum='lum(X,Y)*(0.55+0.45*mod(Y\\,4)/3)':cb='cb(X,Y)':cr='cr(X,Y)',"
+            "rgbashift=rh=-18:bh=18,"
+            "crop=1920:1080:0:'40+30*sin(2*PI*t*11)'"
+        ),
+        *_venc(), "-an", glitch,
+    ])
+
+    tail = os.path.join(tmp_dir, "tail.mp4")
+    run_ffmpeg([
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "color=black:s=1920x1080:r=30:d=0.1",
+        "-vf", "noise=alls=15:allf=t+u",
+        *_venc(), "-an", tail,
+    ])
+
+    black = os.path.join(tmp_dir, "black.mp4")
+    run_ffmpeg([
+        "ffmpeg", "-y",
+        "-f", "lavfi", "-i", "color=black:s=1920x1080:r=30:d=0.1",
+        *_venc(), "-an", black,
+    ])
+
+    video_only = os.path.join(tmp_dir, "vhs_video.mp4")
+    _concat_video_parts([glitch, tail, black], video_only)
+
+    duration = get_audio_duration(video_only)
+    run_ffmpeg([
+        "ffmpeg", "-y",
+        "-i", video_only,
+        "-f", "lavfi", "-i", "anullsrc=r=44100:cl=stereo",
+        "-t", f"{duration:.3f}",
+        *_venc(),
+        "-c:a", "aac", "-b:a", "192k",
+        output_path,
+    ])
+    shutil.rmtree(tmp_dir, ignore_errors=True)
+    return output_path
+
+
 def _build_burn_transition(output_path: str, work_dir: str) -> str:
     """Создаёт короткий переход «прогорание плёнки»: искра в углу кадра →
     раскалённое бело-оранжевое пятно расползается, тая в тёмно-красный по
