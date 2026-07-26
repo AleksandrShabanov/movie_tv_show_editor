@@ -169,7 +169,10 @@ def _lumean_template_id(voice_id: str) -> str:
             "voice_id": voice_id,
             "voice_settings": {
                 # Максимальная ровность: голос иногда «проседал» ниже по тону.
-                "stability": 1.0, "similarity_boost": 0.85,
+                # similarity_boost чуть снижен и style обнулён — эксперимент
+                # против редких (1-2 за ролик) огрехов на отдельных сегментах;
+                # stability трогать не стали, это уже подтверждённое улучшение.
+                "stability": 1.0, "similarity_boost": 0.80, "style": 0.0,
                 "use_speaker_boost": True, "speed": 1.0,
             },
         }},
