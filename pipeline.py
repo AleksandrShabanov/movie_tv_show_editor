@@ -1445,6 +1445,10 @@ def _build_segment_impl(
         "[2:v]format=rgba,fade=t=in:st=5.0:d=0.5:alpha=1[cbug];"
         "[vpad][cbug]overlay=x=W-overlay_w-20:y=H-overlay_h-20:eof_action=repeat[v]",
         "-map", "[v]", "-map", "1:a",
+        # Разные TTS-вызовы отдают войсовер с разным уровнем громкости
+        # (разброс до 5-6 dB) — нормализуем, чтобы стыки между фильмами
+        # не скакали по громкости.
+        "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
         *_venc(), "-r", "30",
         "-c:a", "aac", "-b:a", "192k", "-ac", "2",
         "-shortest", output_path,
@@ -1706,6 +1710,7 @@ def main():
                 "-i", intro_silent, "-i", intro_vo,
                 "-filter_complex", f"[0:v]tpad=stop_mode=clone:stop_duration={pad_sec:.1f}[v]",
                 "-map", "[v]", "-map", "1:a",
+                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
                 *_venc(), "-r", "30",
                 "-c:a", "aac", "-b:a", "192k", "-ac", "2",
                 "-shortest", intro_path,
@@ -1808,6 +1813,7 @@ def main():
                 "-i", outro_silent, "-i", outro_vo,
                 "-filter_complex", f"[0:v]tpad=stop_mode=clone:stop_duration={pad_sec:.1f}[v]",
                 "-map", "[v]", "-map", "1:a",
+                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",
                 *_venc(), "-r", "30",
                 "-c:a", "aac", "-b:a", "192k", "-ac", "2",
                 "-shortest", outro_path,
