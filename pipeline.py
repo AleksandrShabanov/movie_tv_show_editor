@@ -228,6 +228,117 @@ def generate_voiceover(text: str, output_path: str, voice_id: str = DEFAULT_VOIC
     return output_path
 
 
+def _generate_batched_voiceovers(
+    segments_spec: list[tuple[str, str]],
+    work_dir: str,
+    voice_id: str = DEFAULT_VOICE_ID,
+) -> None:
+    """Генерирует войсоверы для интро + всех фильмов + аутро ОДНИМ TTS-заказом
+    и режет результат по alignment-таймингам на отдельные mp3.
+
+    Отдельные /orders-заказы у Lumean НЕ разделяют непрерывность голоса между
+    собой (в отличие от чанков ВНУТРИ одного заказа, которые Lumean сшивает
+    гладко — проверено вживую: ни щелчков, ни провалов в тишину на границах
+    чанков). Поэтому один большой заказ на весь ролик даёт заметно более
+    ровный тон по всему видео, ценой того, что правка текста любого одного
+    фильма требует перегенерации всей озвучки целиком.
+
+    segments_spec: список (output_path, text) в порядке появления в ролике.
+    """
+    if not segments_spec:
+        return
+
+    combined_text = " ".join(text for _, text in segments_spec)
+    combined_hash = hashlib.md5(combined_text.encode()).hexdigest()
+    hash_file = os.path.join(work_dir, "combined_vo.hash")
+
+    all_exist = all(os.path.exists(p) for p, _ in segments_spec)
+    if (all_exist and os.path.exists(hash_file)
+            and open(hash_file).read().strip() == combined_hash):
+        print(f"  ↩  Озвучка (батч, {len(segments_spec)} блоков) уже готова, пропускаем")
+        return
+
+    print(f"  🎙  Батч-генерация озвучки ({len(segments_spec)} блоков, "
+          f"{len(combined_text)} символов)...")
+
+    # Смещения символов каждого блока в объединённом тексте (для нарезки)
+    offsets = []
+    pos = 0
+    for i, (_, text) in enumerate(segments_spec):
+        offsets.append(pos)
+        pos += len(text)
+        if i < len(segments_spec) - 1:
+            pos += 1  # разделяющий пробел
+
+    template_id = _lumean_template_id(voice_id)
+    order = _lumean_request("POST", "/orders",
+                            {"template_id": template_id, "input_text": combined_text})["data"]
+    order_id = order["id"]
+    print(f"     Order ID: {order_id} — ожидаем...")
+
+    TERMINAL_OK  = {"completed", "result_delivered"}
+    TERMINAL_BAD = {"failed", "cancelled", "compensated"}
+    files, service_files = None, None
+    last_status = None
+    for _ in range(1200):  # 1200 × 3s = 60 мин
+        time.sleep(3)
+        try:
+            d = _lumean_request("GET", f"/orders/{order_id}", retries=5)["data"]
+        except Exception:
+            continue
+        status = d.get("status", "")
+        if status != last_status:
+            cc, tc = d.get("completed_chunks"), d.get("total_chunks")
+            suffix = f" (чанки {cc}/{tc})" if tc else ""
+            print(f"     Статус: {status}{suffix}")
+            last_status = status
+        if status in TERMINAL_OK:
+            result = d.get("result") or {}
+            files = result.get("files") or []
+            service_files = result.get("service_files") or []
+            if not files:
+                raise RuntimeError(f"Lumean: батч завершён, но нет аудиофайла: {d}")
+            break
+        if status in TERMINAL_BAD:
+            raise RuntimeError(f"Lumean: батч-заказ провален ({status}): {d}")
+    else:
+        raise TimeoutError("Батч-озвучка не готова за 60 минут")
+
+    align_path = next((p for p in service_files if p.endswith("result.json")), None)
+    if not align_path:
+        raise RuntimeError(f"Lumean: нет alignment result.json в service_files: {service_files}")
+
+    combined_mp3 = os.path.join(work_dir, "combined_vo.mp3")
+    dl_url = _lumean_request("POST", "/storage/url", {"path": files[0]})["data"]["url"]
+    audio = requests.get(dl_url, timeout=300)
+    audio.raise_for_status()
+    with open(combined_mp3, "wb") as f:
+        f.write(audio.content)
+
+    align_url = _lumean_request("POST", "/storage/url", {"path": align_path})["data"]["url"]
+    align_resp = requests.get(align_url, timeout=120)
+    align_resp.raise_for_status()
+    align_data = align_resp.json()
+    starts = align_data["alignment"]["character_start_times_seconds"]
+    total_duration = align_data.get("duration_seconds") or get_audio_duration(combined_mp3)
+
+    print(f"     → Нарезка на {len(segments_spec)} файлов по alignment...")
+    for i, (out_path, _) in enumerate(segments_spec):
+        start = starts[offsets[i]] if offsets[i] > 0 else 0.0
+        end = starts[offsets[i + 1]] if i + 1 < len(segments_spec) else total_duration
+        run_ffmpeg([
+            "ffmpeg", "-y",
+            "-ss", f"{start:.3f}", "-to", f"{end:.3f}",
+            "-i", combined_mp3,
+            "-c:a", "libmp3lame", "-q:a", "2",
+            out_path,
+        ])
+
+    os.remove(combined_mp3)
+    open(hash_file, "w").write(combined_hash)
+    print(f"     ✓ Батч-озвучка готова ({len(segments_spec)} файлов)")
+
+
 def get_audio_duration(path: str) -> float:
     """Возвращает длительность аудиофайла в секундах через ffprobe."""
     cmd = [
@@ -1674,9 +1785,28 @@ def main():
         else:
             print(f"     ⚠  Трейлер не найден для: {movie['title']} — фильм будет пропущен")
 
+    # ── Шаг 1.5: озвучка (интро + все фильмы + аутро) одним заказом ──────
+    intro_vo_text = data.get("intro_voiceover")
+    outro_vo_text = data.get("outro_voiceover")
+    intro_vo_path = os.path.join(work_dir, "intro_vo.mp3")
+    outro_vo_path = os.path.join(work_dir, "outro_vo.mp3")
+    vo_paths: dict[int, str] = {}
+    for movie in movies:
+        safe_t = "".join(c for c in movie["title"] if c.isalnum() or c in " _-").strip().replace(" ", "_")
+        vo_paths[movie["number"]] = os.path.join(work_dir, "voiceovers", f"{movie['number']:02d}_{safe_t}.mp3")
+
+    if not args.skip_voiceover:
+        segments_spec: list[tuple[str, str]] = []
+        if intro_vo_text:
+            segments_spec.append((intro_vo_path, intro_vo_text))
+        for movie in movies:
+            segments_spec.append((vo_paths[movie["number"]], movie["voiceover_text"]))
+        if outro_vo_text:
+            segments_spec.append((outro_vo_path, outro_vo_text))
+        _generate_batched_voiceovers(segments_spec, work_dir, voice_id)
+
     # ── Шаг 2: интро ─────────────────────────────────────────────────────
     intro_path = os.path.join(work_dir, "intro.mp4")
-    intro_vo_text = data.get("intro_voiceover")
     intro_vid_hash_file = intro_path + ".hash"
     intro_vid_hash = hashlib.md5((intro_vo_text or "").encode()).hexdigest()
     intro_needs_rebuild = (
@@ -1689,13 +1819,7 @@ def main():
         intro_vo = None
         intro_duration = INTRO_DURATION
         if intro_vo_text and not args.skip_voiceover:
-            intro_vo = os.path.join(work_dir, "intro_vo.mp3")
-            intro_hash_file = intro_vo + ".hash"
-            text_hash = hashlib.md5(intro_vo_text.encode()).hexdigest()
-            if (not os.path.exists(intro_vo) or not os.path.exists(intro_hash_file)
-                    or open(intro_hash_file).read().strip() != text_hash):
-                generate_voiceover(intro_vo_text, intro_vo, voice_id)
-                open(intro_hash_file, "w").write(text_hash)
+            intro_vo = intro_vo_path
             intro_duration = get_audio_duration(intro_vo)
 
         intro_silent = os.path.join(work_dir, "intro_silent.mp4")
@@ -1729,14 +1853,13 @@ def main():
         number      = movie["number"]
         title       = movie["title"]
         year        = movie["year"]
-        script      = movie["voiceover_text"]
         imdb_rating = movie.get("imdb_rating")
 
         print(f"\n[{number}] {title} ({year})")
 
         safe_t   = "".join(c for c in title if c.isalnum() or c in " _-").strip().replace(" ", "_")
-        vo_path  = os.path.join(work_dir, "voiceovers", f"{number:02d}_{safe_t}.mp3")
-        seg_path = os.path.join(work_dir, "segments",   f"{number:02d}_{safe_t}.mp4")
+        vo_path  = vo_paths[number]
+        seg_path = os.path.join(work_dir, "segments", f"{number:02d}_{safe_t}.mp4")
 
         if os.path.exists(seg_path):
             print(f"     ↩  Сегмент уже есть, пропускаем")
@@ -1744,10 +1867,8 @@ def main():
             continue
 
         if not os.path.exists(vo_path):
-            if args.skip_voiceover:
-                print(f"     ⚠  Войсовер не найден и --skip-voiceover включён, пропускаем {title}")
-                continue
-            generate_voiceover(script, vo_path, voice_id)
+            print(f"     ⚠  Войсовер не найден, пропускаем {title}")
+            continue
 
         print(f"  🖼  Скачиваем постер и стоп-кадры...")
         poster  = download_poster(title, year, os.path.join(work_dir, "posters"))
@@ -1779,7 +1900,6 @@ def main():
 
     # ── Шаг 4: аутро ─────────────────────────────────────────────────────
     outro_path = os.path.join(work_dir, "outro.mp4")
-    outro_vo_text = data.get("outro_voiceover")
     outro_vid_hash_file = outro_path + ".hash"
     outro_vid_hash = hashlib.md5((outro_vo_text or "").encode()).hexdigest()
     outro_needs_rebuild = (
@@ -1792,13 +1912,7 @@ def main():
         outro_vo = None
         outro_duration = OUTRO_DURATION
         if outro_vo_text and not args.skip_voiceover:
-            outro_vo = os.path.join(work_dir, "outro_vo.mp3")
-            outro_hash_file = outro_vo + ".hash"
-            text_hash = hashlib.md5(outro_vo_text.encode()).hexdigest()
-            if (not os.path.exists(outro_vo) or not os.path.exists(outro_hash_file)
-                    or open(outro_hash_file).read().strip() != text_hash):
-                generate_voiceover(outro_vo_text, outro_vo, voice_id)
-                open(outro_hash_file, "w").write(text_hash)
+            outro_vo = outro_vo_path
             outro_duration = get_audio_duration(outro_vo)
 
         outro_silent = os.path.join(work_dir, "outro_silent.mp4")
