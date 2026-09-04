@@ -1,28 +1,149 @@
 {
   "voice_id": "iP95p4xoKVk53GoZ742B",
-  "intro_voiceover": "Welcome to our countdown of the 20 greatest thriller movies of all time. Stay till the end — you won't want to miss number one.",
-  "outro_voiceover": "That's our top 20 thriller movies of all time. Which one is your favourite? Let us know in the comments, and don't forget to like and subscribe for more.",
+  "intro_voiceover": "The monster is never really the monster. It is always something else — the thing we cannot name, the fear we cannot rationalise, the darkness we suspect lives not just outside the window but somewhere closer. Cinema understood this from the very beginning, which is why the monster movie is the oldest genre we have and also, somehow, the most alive. Hi, this is Movie Blanket Club. Today we are counting down the Top 20 best monster movies of all time. From the creatures that built Hollywood to the ones that broke every rule we thought the genre had. These are the films that proved the most terrifying thing on screen does not need to be human. In fact, it usually isn't.",
+  "outro_voiceover": "And there you have it — the Top 20 best monster movies of all time. From the ancient dread of Creature from the Black Lagoon to the mechanical perfection of the shark in Jaws. From Carpenter's shape-shifting nightmare to Scott's perfect killing machine. Every film on this list understood the same thing: the monster works because of what it says about us. We build them. We fear them. We cannot stop watching them. This is Movie Blanket Club. Tell us in the comments: which monster scared you the most? And which film here did we rank completely wrong?",
   "movies": [
     {
       "number": 20,
-      "title": "Prisoners",
-      "year": 2013,
-      "imdb_rating": 8.1,
-      "voiceover_text": "Coming in at number 20, Prisoners from 2013. Directed by Denis Villeneuve, this gripping thriller follows two families whose daughters disappear on Thanksgiving Day. Hugh Jackman delivers a raw, powerful performance as a desperate father who takes the law into his own hands. Jake Gyllenhaal plays the detective on the case. With its relentless tension and moral complexity, Prisoners asks how far a parent would go to save their child."
+      "title": "Creature from the Black Lagoon",
+      "year": 1954,
+      "imdb_rating": 7.0,
+      "voiceover_text": "Twenty. Creature from the Black Lagoon, 1954. Jack Arnold's film is the last great Universal Monster — the one that arrived after Dracula and Frankenstein and the Wolfman had already established what a studio creature feature could be, and which somehow managed to feel like something genuinely new. A scientific expedition in the Amazon discovers a prehistoric amphibious humanoid in a remote lagoon, and the film follows the predictable arc of discovery, capture attempt, and catastrophe with a grace that its modest budget does not suggest. What makes the Gill-Man endure — beyond the practical suit work, which remains impressive — is the film's strange sympathy for its monster. The underwater sequences, in which the creature glides beneath the oblivious Kay as she swims on the surface, are genuinely beautiful and genuinely unnerving in equal measure. There is something in the Gill-Man's gaze that reads as longing rather than hunger, and the film is wise enough not to resolve that ambiguity. Creature from the Black Lagoon is a B-movie that contains a better film than its classification suggests. Guillermo del Toro watched it at age six and eventually made The Shape of Water as a direct response. That is the kind of influence that earns a place on this list."
     },
     {
       "number": 19,
-      "title": "Shutter Island",
-      "year": 2010,
-      "imdb_rating": 8.2,
-      "voiceover_text": "Number 19 is Shutter Island, Martin Scorsese's psychological thriller from 2010. Leonardo DiCaprio plays U.S. Marshal Teddy Daniels, sent to investigate a missing patient from a remote psychiatric facility. As the mystery deepens, the line between reality and delusion begins to blur. Few films match its atmospheric dread and the shocking revelation that reframes everything you've just watched."
+      "title": "Tremors",
+      "year": 1990,
+      "imdb_rating": 7.1,
+      "voiceover_text": "Nineteen. Tremors, 1990. Ron Underwood's film is the great genre crowd-pleaser on this list — a movie that understands the monster movie formula with complete precision and deploys it with a joy that is entirely infectious. Kevin Bacon and Fred Ward play handymen in a Nevada desert town who discover that something is moving beneath the ground — massive, fast, and attracted to vibration — and who must survive without the benefit of any plan that actually works. The Graboids, as they come to be known, are one of cinema's best creature designs: genuinely threatening, governed by rules that create tension rather than resolving it, and capable of being surprised by the same ingenuity the characters use to surprise them. Tremors is funny. It is also correctly paced, well-cast, and entirely honest about what it is. The film never pretends to be anything other than a very good version of a simple idea, and that clarity of purpose is a rarer quality than it sounds. Kevin Bacon has said in interviews that he initially turned it down. He came back. The correct decision."
     },
     {
       "number": 18,
-      "title": "Inception",
-      "year": 2010,
-      "imdb_rating": 8.8,
-      "voiceover_text": "At number 18, Christopher Nolan's Inception from 2010 remains one of cinema's most ambitious achievements. A thief who enters people's dreams to steal secrets is tasked with the opposite — planting an idea in a target's mind. With Leonardo DiCaprio leading an incredible ensemble, and Hans Zimmer's iconic score, Inception dazzles the mind while keeping the heart engaged."
+      "title": "Gremlins",
+      "year": 1984,
+      "imdb_rating": 7.3,
+      "voiceover_text": "Eighteen. Gremlins, 1984. Joe Dante's film is one of the defining works of the eighties studio horror-comedy — a movie that was produced by Steven Spielberg, features genuine violence and darkness, was rated PG, and contributed significantly to the creation of the PG-13 rating in the United States. Zach Galligan plays Billy, who receives a mysterious creature called a Mogwai for Christmas, violates two of the three rules he is given for its care within the first day, and unleashes a swarm of malevolent, chaotic small monsters on his small town. The Gremlins themselves are extraordinary puppetwork — physical, expressive, and capable of conveying both comedy and genuine menace, sometimes in the same shot. Dante hides a fairly pointed suburban satire inside the creature feature, and the film's cheerful willingness to destroy Christmas iconography — the carol singers, the decorations, the department store — gives it an anarchic energy that the Spielberg brand usually keeps at a safer distance. Gremlins is a film about what happens when the cute thing stops being cute. It has not aged poorly."
+    },
+    {
+      "number": 17,
+      "title": "Cloverfield",
+      "year": 2008,
+      "imdb_rating": 7.1,
+      "voiceover_text": "Seventeen. Cloverfield, 2008. Matt Reeves's film takes the Godzilla premise and submits it entirely to the found footage conceit — we see the destruction of New York from ground level, through a handheld camera carried by people who have no idea what they are looking at and no capacity to understand the scale of what is happening around them. This is both the film's limitation and its central argument. Cloverfield never fully reveals the monster, and the fragments we see — a tail through smoke, a leg filling a street, the head of the Statue of Liberty landing on a road — are more effective than any complete reveal would have been. The human characters are thinly written, which matters less than it would in another genre. In the context of a monster attack on a city, thin characterisation reads as verisimilitude. These are not protagonists. They are survivors who happen to be carrying a camera. Cloverfield is a film with a genuinely original formal idea and the discipline to execute it without flinching. The nausea is the point."
+    },
+    {
+      "number": 16,
+      "title": "An American Werewolf in London",
+      "year": 1981,
+      "imdb_rating": 7.5,
+      "voiceover_text": "Sixteen. An American Werewolf in London, 1981. John Landis's film exists at the exact intersection of horror and comedy where both genres are served fully rather than either being sacrificed for the other — which is a balance almost no film before or since has achieved with the same precision. David Naughton plays Jack, an American student who is attacked by a wolf on the Yorkshire moors, wakes up in a London hospital with no memory of the attack, and begins receiving visits from his dead friend Griffin Dunne, who delivers the bad news with characteristic directness. Rick Baker's Academy Award-winning transformation sequence remains the benchmark for practical effects werewolf work — every subsequent film in the subgenre is measured against it, and almost none of them pass. What Landis understands, and what his imitators frequently miss, is that the horror and the comedy are not alternating tones but simultaneous ones. The film is funny because the situation is terrible. The situation is terrible because the film is funny. An American Werewolf in London earns its ending by never pretending that any of this was going to work out."
+    },
+    {
+      "number": 15,
+      "title": "The Mist",
+      "year": 2007,
+      "imdb_rating": 7.2,
+      "voiceover_text": "Fifteen. The Mist, 2007. Frank Darabont's adaptation of Stephen King's novella is the most emotionally devastating film on this list — a creature feature that uses its monsters primarily as a mechanism for examining what people become when they are terrified and certain and in proximity to one another. Thomas Jane plays a father trapped in a supermarket with his son as a thick mist rolls in from the outside carrying things that kill anyone who enters it. The creatures themselves are extraordinary — the spider sequence, the pterodactyl-adjacent attackers, the final glimpse of something unimaginably large moving through the fog — but Darabont is more interested in Mrs. Carmody, played by Marcia Gay Harden in a performance of complete, terrifying conviction, who turns the fear into religion with a speed that feels exactly as plausible as it is horrible. The ending is not the ending of King's novella. Darabont changed it. King has said the new ending is better than his own. He is right. The final shot of The Mist is one of the most formally precise pieces of cruelty in genre cinema, and it earns every second of the silence that follows it."
+    },
+    {
+      "number": 14,
+      "title": "The Host",
+      "year": 2006,
+      "imdb_rating": 7.0,
+      "voiceover_text": "Fourteen. The Host, 2006. Bong Joon-ho's monster film arrived three years before Parasite and demonstrated everything the world would later recognise as his signature: the refusal to honour genre conventions as given, the class critique embedded in entertainment, the tonal range that encompasses slapstick and genuine grief within the same sequence. A mutant creature emerges from the Han River and snatches the daughter of a dysfunctional family of a snack bar vendor, played by Song Kang-ho, who must rescue her from beneath the river despite the government's insistence that she is dead. The Host does something the American blockbuster almost never attempts: it allows its monster to be fully visible, fully physical, and fully threatening in broad daylight within the first fifteen minutes, then builds the film's tension around something other than revelation. The family at its centre is drawn with a specificity and warmth that makes their incompetence funny and their grief real. The film is also a pointed satire of American military presence in South Korea, which it does not hide. The Host made more money than any Korean film before it. Bong Joon-ho had not yet become Bong Joon-ho. He already was."
+    },
+    {
+      "number": 13,
+      "title": "Nope",
+      "year": 2022,
+      "imdb_rating": 6.8,
+      "voiceover_text": "Thirteen. Nope, 2022. Jordan Peele's third film is the most formally ambitious entry on this list and the most divisive — a film that uses the grammar of the UFO thriller and the Western to build an argument about spectacle, exploitation, and the cost of being watched. Daniel Kaluuya and Keke Palmer play siblings who discover that something is living in the clouds above their family's horse ranch in California, and who decide to film it. The monster, when it is finally revealed in full, is one of the most original creature designs in recent cinema — something that functions by rules the film builds carefully and withholds intelligently. Nope is occasionally criticised for its density and its refusal to give the audience everything it seems to be setting up. This criticism tells you more about expectations than about the film. Peele is interested in the act of filming — in why we point cameras at terrible things and what we lose by doing it. The sequence involving a chimpanzee on a nineties sitcom is one of the most disturbing things in any film on this list, and it has nothing directly to do with the monster. That is the point."
+    },
+    {
+      "number": 12,
+      "title": "The Shape of Water",
+      "year": 2017,
+      "imdb_rating": 7.3,
+      "voiceover_text": "Twelve. The Shape of Water, 2017. Guillermo del Toro's Academy Award-winning film is a direct response to Creature from the Black Lagoon — an explicit reclamation of the monster as romantic figure and object of human connection rather than threat. Sally Hawkins plays Elisa, a mute cleaning woman at a government research facility in 1962 Baltimore, who falls in love with an amphibious humanoid being held in a tank. Michael Shannon plays the government agent who views the creature as a weapon and an asset. The film is Del Toro operating at full romantic register — every frame composed with a lushness that serves the fairy tale logic the story demands. The creature design is the finest in his filmography, which sets a high bar. The Shape of Water will not work for everyone: it is sentimental in a way that requires the audience to accept the film's emotional logic on its own terms. Those who accept it find something genuinely moving. Del Toro has spent his career arguing that the monster deserves our empathy. The Shape of Water is the fullest statement of that argument, and it won him the Academy Award for Best Picture and Best Director in the same evening."
+    },
+    {
+      "number": 11,
+      "title": "A Quiet Place",
+      "year": 2018,
+      "imdb_rating": 7.5,
+      "voiceover_text": "Eleven. A Quiet Place, 2018. John Krasinski's film is the most formally inventive recent entry on this list — a monster movie built around a single constraint that reshapes every scene, every performance, and every decision the film makes. The monsters hunt by sound. The family at the centre of the film — played by Krasinski, Emily Blunt, and two extraordinary child performers — communicate entirely in sign language. The result is a film that generates tension not through jump scares but through the sustained, specific dread of a world in which noise means death. A Quiet Place is also, not incidentally, a film about parenthood — about the specific terror of being responsible for keeping other people alive in circumstances that make survival extremely difficult. Blunt's performance, particularly in the bathtub sequence, is the best acting in any film on this list. The creatures themselves are designed with the logic of a weapon: fast, blind, and governed entirely by their primary sense. The film's final shot is one of cinema's great moments of a character understanding what they are now capable of. A Quiet Place earns that shot through everything that precedes it."
+    },
+    {
+      "number": 10,
+      "title": "Godzilla",
+      "year": 2023,
+      "imdb_rating": 7.8,
+      "voiceover_text": "Ten. Godzilla Minus One, 2023. We have reached the top ten, and the entry that earns this position is not the 1954 original — which appears higher on this list — but Takashi Yamazaki's Academy Award-winning film, which is simultaneously the best Godzilla film made since the original and a genuinely great film on its own terms. Set in postwar Japan, with a protagonist played by Ryunosuke Kamiki who is a failed kamikaze pilot consumed by survivor's guilt, the film understands something that the franchise spent decades obscuring: Godzilla works best as a trauma metaphor. The destruction is not spectacle. It is grief. The creature design honours the original while scaling the destruction to a genuinely modern level of devastation, and the climactic sequence in Tokyo Bay earns its emotional weight because the film has spent ninety minutes making you care about the people in it. Godzilla Minus One won the Academy Award for Best Visual Effects — the first Japanese film to do so — and it did not win by being the most expensive film in the category. It won by being the most purposeful."
+    },
+    {
+      "number": 9,
+      "title": "Predator",
+      "year": 1987,
+      "imdb_rating": 7.8,
+      "voiceover_text": "Nine. Predator, 1987. John McTiernan's film begins as an action movie — a very confident one, with Arnold Schwarzenegger leading a team of Special Forces operatives into a Central American jungle — and slowly, methodically becomes something else entirely as the team members begin to disappear and the thing hunting them becomes clear. The Predator is one of cinema's great creature designs: technologically superior to its prey, capable of invisibility and thermal vision, and motivated not by hunger or territory but by sport. This last detail changes everything. An animal can be understood. A hunter who hunts for pleasure occupies a different moral category, and the film is smart enough to let that implication sit without drawing attention to it. Schwarzenegger has never been more effectively used — his physical scale and assurance make the film's eventual pivot, in which he is clearly outmatched and must resort to ingenuity rather than force, genuinely surprising. The final confrontation between Dutch and the Predator is a piece of pure genre craft: two creatures stripped of their advantages, testing each other in the mud. McTiernan stages it perfectly."
+    },
+    {
+      "number": 8,
+      "title": "The Fly",
+      "year": 1986,
+      "imdb_rating": 7.5,
+      "voiceover_text": "Eight. The Fly, 1986. David Cronenberg's remake of the 1958 film is not a monster movie in the conventional sense — it is a body horror film about disease and deterioration that uses the monster as metaphor with a directness that strips the genre of comfortable distance. Jeff Goldblum plays Seth Brundle, a scientist whose teleportation experiment fuses his DNA with that of a housefly at the molecular level, and Geena Davis plays the journalist who watches him change. The Fly is a film about watching someone you love become unrecognisable — about the specific horror of a transformation that is gradual enough to remain ambiguous until it is far too late. Cronenberg made it during the peak of the AIDS epidemic, and the metaphor is not subtle and was not meant to be. Goldblum's performance is one of the most committed physical performances in genre cinema: he is required to be charming, then erratic, then frightening, then pitiable, all while wearing increasingly elaborate prosthetic work. The final form of Brundlefly is a masterpiece of practical effects. The final request he makes to the woman who loves him is one of the genre's most genuinely heartbreaking moments."
+    },
+    {
+      "number": 7,
+      "title": "Pan's Labyrinth",
+      "year": 2006,
+      "imdb_rating": 8.2,
+      "voiceover_text": "Seven. Pan's Labyrinth, 2006. Guillermo del Toro's masterpiece is on this list because its monsters are among the greatest ever created — and because it earns them through a film of such emotional intelligence that the creatures feel not like special effects but like the expression of something true. Set in postwar Spain, the film follows Ofelia, a young girl whose imagination constructs a fantasy world of fauns and fairies as an escape from a stepfather who is a Francoist captain. The Pale Man — a creature with no eyes in its face that holds its eyeballs in its hands and feeds on children who disobey — is the most original monster design of the twenty-first century. Del Toro built the creature around a fundamental violation of expectation, which is how the best monsters are made. Pan's Labyrinth is a film with two simultaneous interpretations — the fantasy is real, or the fantasy is entirely in Ofelia's mind — and it sustains both with equal conviction. The choice between interpretations changes the film's meaning completely and changes its emotional register from tragedy to something more complex. Del Toro has said he knows which interpretation is true. He has never told anyone."
+    },
+    {
+      "number": 6,
+      "title": "Frankenstein",
+      "year": 1931,
+      "imdb_rating": 7.8,
+      "voiceover_text": "Six. Frankenstein, 1931. James Whale's film is the foundational text of the monster movie as moral argument — the work from which everything else on this list descends in some form. Boris Karloff plays the Monster with a physical restraint and an emotional openness that the film's initial marketing tried hard to disguise: the famous scene in which he reaches toward the light filtering through the laboratory window tells you everything about what the film is actually about. The Monster is not evil. He is made, abandoned, misunderstood, and destroyed by the person who created him, the community that fears him, and the social order that has no category for his existence. Whale made Frankenstein as a horror film and embedded in it one of cinema's clearest arguments about responsibility — specifically the responsibility of the creator to the thing they bring into being. Mary Shelley's novel, on which it is loosely based, was asking the same question in 1818. Cinema inherited the question and has been answering it differently ever since. Karloff's Monster remains definitive not because of what was done to make him frightening but because of the grief that is visible in him that no prosthetic was capable of creating."
+    },
+    {
+      "number": 5,
+      "title": "Gojira",
+      "year": 1954,
+      "imdb_rating": 7.6,
+      "voiceover_text": "Five. Gojira, 1954. Ishirō Honda's original film — not the American re-edit, not any of the sequels, the original Japanese cut — is one of the most directly political mainstream films ever made, and it is also a genuinely effective piece of monster cinema. Made nine years after Hiroshima and Nagasaki, using a cast and crew who lived through the war, the film does not use its monster as metaphor: Godzilla is the atomic bomb. He rises from the ocean because of nuclear testing. He destroys Tokyo with a force and a totality that mirrors, precisely, what bombs do to cities. The scientists who debate whether to deploy the Oxygen Destroyer — a weapon that could stop Godzilla but should never be known to governments — are engaging in exactly the moral argument that the Manhattan Project physicists were engaging in, too late, in the years that followed. The miniature work has dated. The film has not. Gojira is a work of genuine national grief made in the form of a creature feature, and its achievement is that both functions operate simultaneously without either diminishing the other. Godzilla Minus One understood this. Honda did it first."
+    },
+    {
+      "number": 4,
+      "title": "King Kong",
+      "year": 1933,
+      "imdb_rating": 7.9,
+      "voiceover_text": "Four. King Kong, 1933. Merian C. Cooper and Ernest B. Schoedsack's film is ninety years old and has not been equalled. The stop-motion animation that brings Kong to life — the work of Willis O'Brien and a team who invented techniques that the field was still using decades later — creates a creature of such expressiveness and physical specificity that the argument made by the film's ending is fully earned: the monster is not the villain. Every subsequent King Kong film, including Peter Jackson's genuinely excellent 2005 version, is in some essential way a response to this original, and none of them captures what O'Brien's Kong actually communicates, which is interiority. The creature thinks. It remembers. It returns to the woman even when returning costs it everything. Kong's death on the Empire State Building — the biplanes circling, the great hand reaching for Ann Wray one more time before it goes — is one of cinema's foundational tragic images. The film has been read as an allegory of race, of colonialism, of the entertainment industry's appetite for spectacle. All of these readings are there. None of them exhaust it."
+    },
+    {
+      "number": 3,
+      "title": "The Thing",
+      "year": 1982,
+      "imdb_rating": 8.2,
+      "voiceover_text": "Three. The Thing, 1982. John Carpenter's film is the most formally frightening entry on this list — a monster movie built not around the creature's ability to destroy bodies but around its ability to occupy them, replacing and imitating the people at an Antarctic research station until no one can know who has been assimilated and who remains human. The paranoia that results is more effective than any creature reveal. Rob Bottin's practical effects work — created under conditions of extreme pressure and physical toll, leaving Bottin hospitalised by the end of production — remains the greatest practical monster work in cinema history. The chest defibrillator sequence. The head separating from the body and growing legs. The transformation of a creature into something that has no analogue. These sequences were made without computers and have not been surpassed by anything that has. The Thing failed at the box office on release, dismissed as gratuitous by critics who were comparing it unfavourably to E.T., which had opened two weeks earlier. Time has resolved this argument completely. Carpenter made a film about the impossibility of trust, and he built it inside a monster movie so that it could not be avoided."
+    },
+    {
+      "number": 2,
+      "title": "Alien",
+      "year": 1979,
+      "imdb_rating": 8.5,
+      "voiceover_text": "Two. Alien, 1979. Ridley Scott's film is the perfect monster movie — a film in which every element serves the central purpose of making the creature feel real, specific, and inevitable. The Xenomorph, designed by H.R. Giger, is built on a principle that no creature design before it had articulated: everything about it is an instrument of reproduction, and therefore every interaction with it is an act of violation. Giger called the design a fusion of the organic and the mechanical, and what he created is a creature that reads as alien in the literal sense — not a recognisable animal in a new form, but a living thing from a different evolutionary logic entirely. Scott controls the film's pacing with a precision that was underappreciated in 1979 and is now recognised as mastery. The alien is almost never fully visible. The crew of the Nostromo are not heroes — they are workers, arguing about contracts and overtime pay, who encounter something for which no contract contains a clause. Sigourney Weaver's Ripley is cinema's great monster movie survivor: competent, afraid, and capable of a decision in the film's final sequence that earns the franchise that follows it. Alien is tense in the way that only films with complete formal command can be."
+    },
+    {
+      "number": 1,
+      "title": "Jaws",
+      "year": 1975,
+      "imdb_rating": 8.1,
+      "voiceover_text": "One. Jaws, 1975. Steven Spielberg's film is the greatest monster movie ever made, and it is a greater film than that classification suggests. A great white shark begins attacking swimmers at Amity Island, a beach town economically dependent on summer tourism, and the police chief — played by Roy Scheider in a performance of such naturalness it barely reads as acting — must navigate the conflict between public safety and local politics while finding a way to stop something he is terrified of in the water where it lives. The shark — notoriously unreliable during production, malfunctioning so frequently that Spielberg was forced to suggest rather than show it for most of the film — is consequently one of cinema's most effective monsters. We see almost nothing of it. We know exactly where it is. The film's central dynamic — Scheider, Richard Dreyfuss, and Robert Shaw on a boat that is too small, closing in on something that is larger than any of them expected — is a masterclass in building character relationships under pressure and then destroying everything at precisely the right moment. Shaw's USS Indianapolis monologue is the finest scene in any monster movie. The ending, in which Brody is waist-deep in the ocean holding a rifle, is terrifying and triumphant simultaneously. No film has done both at once more completely. We are going to need a bigger boat. We always were."
     }
   ]
 }
+
+
